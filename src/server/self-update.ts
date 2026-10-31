@@ -23,7 +23,10 @@ import type { NextRunner } from "./next-runner.js";
 const RESTART_CODE = 75;
 /** Changes with every start, so the page can tell the restarted server from the old one. */
 const BOOT_ID = `${process.pid}-${Date.now()}`;
-const REGENERATED = [/^runtime\/channels\/[^/]+\.config\.json$/, /^runtime\/lineup\.json$/, /^runtime\/guide-config\.json$/];
+// Files this machine rewrites by itself, so local changes to them never block an
+// update: the runtime configs (the server regenerates them) and the lockfiles
+// (npm install rewrites them; the update runs npm install after pulling anyway).
+const REGENERATED = [/^runtime\/channels\/[^/]+\.config\.json$/, /^runtime\/lineup\.json$/, /^runtime\/guide-config\.json$/, /^(web\/)?package-lock\.json$/];
 
 interface Commit { sha: string; subject: string; date: string }
 export interface SelfUpdateStatus {
