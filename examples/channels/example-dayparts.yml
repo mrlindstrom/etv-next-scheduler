@@ -1,0 +1,94 @@
+# Example channel showing DAYPARTING: different programming by day-of-week and
+# time-of-day. Rules are matched top-to-bottom, first match wins; a rule with no
+# days/from/to is a catch-all default. Put the default LAST.
+
+content:
+  - search: {}
+    key: SMURFS
+    query: 'type:episode AND show_title:"The Smurfs" AND minutes:[1 TO 31]'
+    order: chronological
+  - search: {}
+    key: SCOOBY
+    query: 'type:episode AND show_title:"Scooby-Doo, Where Are You!" AND minutes:[1 TO 31]'
+    order: chronological
+  - search: {}
+    key: FULL_HOUSE
+    query: 'type:episode AND show_title:"Full House" AND minutes:[1 TO 31]'
+    order: chronological
+  - search: {}
+    key: NIGHT_COURT
+    query: 'type:episode AND show_title:"Night Court" AND minutes:[1 TO 31]'
+    order: chronological
+  - search: {}
+    key: COMMERCIALS
+    query: 'library_name:("Nick Sourced Filler" OR "mixed commercials") AND title:commercial* AND seconds:[1 TO 31]'
+    order: shuffle
+
+# Each daypart points at a sequence; the engine loops that sequence to fill the
+# daypart window (an item that started before the boundary finishes cleanly).
+sequence:
+  - key: MORNING
+    items:
+      - count: 1
+        content: SMURFS
+      - pad_to_next: 30
+        content: COMMERCIALS
+        filler_kind: postroll
+        trim: true
+  - key: WEEKEND
+    items:
+      - count: 1
+        content: SCOOBY
+      - pad_to_next: 30
+        content: COMMERCIALS
+        filler_kind: postroll
+        trim: true
+  - key: DAYTIME
+    items:
+      - count: 1
+        content: FULL_HOUSE
+      - pad_to_next: 30
+        content: COMMERCIALS
+        filler_kind: postroll
+        trim: true
+  - key: OVERNIGHT
+    items:
+      - count: 1
+        content: NIGHT_COURT
+      - pad_to_next: 30
+        content: COMMERCIALS
+        filler_kind: postroll
+        trim: true
+
+# Rules are first-match-wins, so put the most specific (date/holiday) rules at
+# the TOP and the plain catch-all LAST. A rule with a date facet (holiday /
+# date / date_from+date_to / months) only matches on days that also satisfy it.
+# See docs/DAYPARTING.md for the full reference.
+dayparts:
+  # --- holiday / seasonal blocks (most specific -> first) ------------------
+  - label: Christmas Day (all day)
+    holiday: christmas          # resolves to 12/25 every year
+    sequence: WEEKEND           # e.g. an all-day marathon sequence
+  - label: Christmas week mornings
+    date_from: "12-20"          # annual MM-DD range (inclusive)
+    date_to: "12-31"
+    from: "06:00"
+    to: "12:00"
+    sequence: WEEKEND
+  # --- normal weekly grid --------------------------------------------------
+  - label: Weekday mornings
+    days: [mon, tue, wed, thu, fri]
+    from: "06:00"
+    to: "12:00"
+    sequence: MORNING
+  - label: Weekend mornings
+    days: [sat, sun]
+    from: "06:00"
+    to: "12:00"
+    sequence: WEEKEND
+  - label: Daytime
+    from: "12:00"     # all days
+    to: "20:00"
+    sequence: DAYTIME
+  - label: Overnight (default)
+    sequence: OVERNIGHT

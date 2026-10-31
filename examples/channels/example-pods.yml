@@ -1,0 +1,67 @@
+# Example channel showing the new mid-roll modes + commercial-break pod builder.
+# Night Court has no chapter markers, so this uses interval mid-roll (a break
+# every 7 minutes of content) and fills each break with a duration-targeted pod.
+
+content:
+  - search:
+    key: NIGHT_COURT
+    query: 'type:episode AND show_title:"Night Court" AND minutes:[1 TO 31]'
+    order: chronological
+  - search:
+    key: COMMERCIALS
+    query: 'library_name:("Nick Sourced Filler" OR "mixed commercials" OR "CN source filler") AND title:commercial* AND seconds:[1 TO 31]'
+    order: shuffle
+  - search:
+    key: BUMPER_IN
+    query: 'type:other_video AND tag:"be right back" AND title:generic'
+    order: shuffle
+  - search:
+    key: BUMPER_OUT
+    query: 'type:other_video AND tag:"back to" AND title:generic'
+    order: shuffle
+  - search:
+    key: PROMOS
+    query: 'library_name:"Nickelodeon Commercials" AND tag:promos AND seconds:[1 TO 61]'
+    order: shuffle
+
+# Commercial-break pods: assemble a break from ordered slots and fill to a
+# target duration. `fill: true` slots stretch to hit `target`; `no_repeat`
+# prevents reusing the same clip within the given window.
+pods:
+  - key: STANDARD_BREAK
+    target: "2 minutes"
+    tolerance: "15 seconds"
+    slots:
+      - content: BUMPER_IN      # "we'll be right back"
+        count: 1
+      - content: COMMERCIALS    # fill the rest of the break
+        fill: true
+        no_repeat: "30 minutes"
+      - content: PROMOS
+        count: 1
+      - content: BUMPER_OUT     # "and now back to the show"
+        count: 1
+
+sequence:
+  - key: SHOW
+    items:
+      - epg_group: true
+      - mid_roll: true
+        mode: interval          # chapters | interval | count
+        interval: "7 minutes"   # a break every 7 min of content
+        # fallback: interval    # (for `mode: chapters`, use this when an item has no chapters)
+        pod: STANDARD_BREAK      # build the break with the pod (or use `sequence:` for a fixed list)
+        min_segment: "90 seconds"
+      - count: 1
+        content: NIGHT_COURT
+      - mid_roll: false
+      - pad_to_next: 30
+        content: COMMERCIALS
+        filler_kind: postroll
+        trim: true
+      - epg_group: false
+
+playout:
+  - wait_until: "12:00 AM"
+  - sequence: SHOW
+  - repeat: true
