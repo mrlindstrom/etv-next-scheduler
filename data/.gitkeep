@@ -1,0 +1,3 @@
+Drop a COPY of your ErsatzTV legacy database here, e.g. data/ersatztv.db
+This folder is git-ignored so the (large) DB is never committed.
+The resolver opens it READ-ONLY.

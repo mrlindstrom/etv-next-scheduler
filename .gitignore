@@ -1,0 +1,29 @@
+# dependencies / build output
+node_modules/
+dist/
+dist-next/
+dist-old/
+web/dist/
+web/dist-next/
+web/vite.config.ts.timestamp-*
+
+# your setup: settings and library index, channels, ErsatzTV next's runtime
+data/*
+!data/.gitkeep
+channels/
+runtime/
+playouts/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# ErsatzTV next + ffmpeg are installed per machine (Streaming → Programs)
+bin/*
+!bin/README.md
+*.exe
+*.dll
+
+# isolated test copy (npm run test-instance)
+.test-instance/
