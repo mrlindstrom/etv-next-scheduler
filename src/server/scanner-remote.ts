@@ -56,6 +56,7 @@ export interface RemoteItem extends RemoteBits {
   width: number; height: number;
   scanKind: number;
   updatedAt: number;           // unix seconds (change detector)
+  etag?: string;               // Jellyfin/Emby: changes whenever the item's metadata does
   title: string;
   plot?: string | null;
   year?: number | null;
@@ -430,7 +431,10 @@ export async function fetchPlexNetworks(address: string, token: string, lib: Rem
   return { byShow, failed, networks: tags.length };
 }
 
-// ---- Jellyfin / Emby (rich listing includes streams + chapters) ------------
+// ---- Jellyfin / Emby ---------------------------------------------------------
+// The listing asks only for cheap fields: People alone makes a page of 200 take
+// ~12 s instead of ~0.7 s on a big library. People, streams and chapters come
+// from a by-id fetch for new or changed items (Etag differs), like Plex.
 const JF_TYPE: Record<number, string> = { 1: "Movie", 2: "Episode", 3: "MusicVideo", 4: "Video", 5: "Audio", 6: "Photo" };
 
 function projectJellyfinItem(it: any): RemoteItem {
@@ -444,13 +448,14 @@ function projectJellyfinItem(it: any): RemoteItem {
     streams.push({ index: Number(s.Index ?? 0) || 0, kind, codec: s.Codec ?? null, profile: s.Profile ?? null, language: s.Language ?? null, channels: Number(s.Channels ?? 0) || 0, title: s.Title ?? s.DisplayTitle ?? null, def: !!s.IsDefault, forced: !!s.IsForced, bits: Number(s.BitDepth ?? 0) || 0, pixel: s.PixelFormat ?? null,
       colorTransfer: s.ColorTransfer ?? null, colorSpace: s.ColorSpace ?? null, colorPrimaries: s.ColorPrimaries ?? null, colorRange: s.ColorRange ?? null });
   }
-  const chapters: RemoteChapter[] = (it.Chapters ?? []).map((c: any, i: number) => ({ id: i, start: tsFromSec((Number(c.StartPositionTicks ?? 0) || 0) / 1e7), end: "00:00:00", title: c.Name ?? null }));
+  const chapters: RemoteChapter[] | undefined = it.Chapters === undefined ? undefined : it.Chapters.map((c: any, i: number) => ({ id: i, start: tsFromSec((Number(c.StartPositionTicks ?? 0) || 0) / 1e7), end: "00:00:00", title: c.Name ?? null }));
   return {
     key: String(it.Id),
     path: it.Path ?? null,
     durationMs: it.RunTimeTicks ? Math.round(Number(it.RunTimeTicks) / 1e4) : 0,
     width, height, scanKind,
     updatedAt: it.DateLastMediaAdded || it.DateCreated ? Math.floor(new Date(it.DateLastMediaAdded ?? it.DateCreated).getTime() / 1000) : 0,
+    etag: it.Etag ? String(it.Etag) : undefined,
     title: it.Name ?? "(untitled)",
     plot: it.Overview ?? null,
     year: it.ProductionYear ?? null,
@@ -460,13 +465,14 @@ function projectJellyfinItem(it: any): RemoteItem {
     show: it.SeriesName, season: it.ParentIndexNumber, episode: it.IndexNumber,
     showKey: it.SeriesId ? String(it.SeriesId) : undefined,
     ...jellyfinArt(it),
-    streams, chapters,
+    streams: it.MediaStreams === undefined ? undefined : streams, chapters,
   };
 }
 
 // Jellyfin/Emby return complete lists for every requested Field, so these are
 // authoritative (legacy JellyfinApiClient: People split by Type).
-const JF_ITEM_FIELDS = "Path,Overview,ProductionYear,PremiereDate,RunTimeTicks,Genres,Studios,Tags,ProviderIds,MediaStreams,Chapters,DateCreated,People,OfficialRating";
+const JF_ITEM_FIELDS = "Path,Overview,ProductionYear,PremiereDate,RunTimeTicks,Genres,Studios,Tags,ProviderIds,MediaStreams,Chapters,DateCreated,People,OfficialRating,Etag";
+const JF_LIST_FIELDS = "Path,Overview,ProductionYear,PremiereDate,RunTimeTicks,Genres,Studios,Tags,ProviderIds,DateCreated,OfficialRating,Etag";
 const JF_SERIES_FIELDS = "Overview,ProductionYear,PremiereDate,Genres,Studios,Tags,ProviderIds,DateCreated,People,OfficialRating,Taglines";
 /** Jellyfin/Emby image references, stored (like legacy) as
  *  "jellyfin://Items/{id}/Images/Primary?tag={tag}" — see artworkPath(). */
@@ -482,6 +488,8 @@ function jellyfinBits(it: any): RemoteBits {
   const guids: string[] = [];
   for (const [k, v] of Object.entries(it.ProviderIds ?? {})) { const kk = String(k).toLowerCase(); if (["imdb", "tmdb", "tvdb"].includes(kk) && v) guids.push(`${kk}://${v}`); }
   const people = (type: string) => (it.People ?? []).filter((p: any) => p?.Name && String(p.Type ?? "").toLowerCase() === type);
+  const listing = it.People === undefined; // a listing row: cast/crew unknown, so leave them (and guids) alone
+  if (listing) return { genres: it.Genres ?? [], tags: (it.Tags ?? []).map((t: string) => ({ name: t })), studios: (it.Studios ?? []).map((s: any) => s.Name).filter(Boolean) };
   return {
     genres: it.Genres ?? [],
     tags: (it.Tags ?? []).map((t: string) => ({ name: t })),
@@ -528,13 +536,13 @@ export async function fetchJellyfinByIds(address: string, token: string, ids: st
 export async function fetchJellyfinListing(address: string, token: string, lib: RemoteLibrary, fetcher: Fetcher, onPage?: (n: number, total: number) => void): Promise<RemoteItem[]> {
   const base = address.replace(/\/+$/, "");
   const type = JF_TYPE[lib.kind] ?? "Video";
-  const fields = JF_ITEM_FIELDS;
+  const fields = JF_LIST_FIELDS;
   const items: RemoteItem[] = [];
   const seen = new Set<string>();
   let start = 0;
   for (let guard = 0; guard < 1_000_000; guard++) {
     const url = `${base}/Items?ParentId=${encodeURIComponent(lib.providerKey)}&Recursive=true&IncludeItemTypes=${type}` +
-      `&Fields=${fields}&StartIndex=${start}&Limit=${PAGE}&api_key=${encodeURIComponent(token)}`;
+      `&Fields=${fields}&EnableUserData=false&StartIndex=${start}&Limit=${PAGE}&api_key=${encodeURIComponent(token)}`;
     const j = await fetcher(url, { "X-Emby-Token": token, Accept: "application/json" });
     const page = j?.Items ?? [];
     if (page.length === 0) break;
@@ -952,6 +960,20 @@ export async function scanRemoteSource(
             try { const d = await fetchPlexItemFull(address, token, it.key, fetcher); if (d) mergeDetail(it, d); } catch { /* keep listing-only data */ }
             done++; if (done % 25 === 0) emit({ phase: "detailing", library: lib.name, fetched: done, total: need.length });
           });
+        } else {
+          // Jellyfin/Emby: People, streams and chapters for items that are new, changed
+          // (Etag differs) or never fully fetched; 50 per request, 4 at a time
+          const existing = existingKeyStamps(db, info.type, lib);
+          const need = opts.refreshMetadata ? items : items.filter((it) => existing.get(it.key)?.etag !== fullEtag(it));
+          emit({ phase: "detailing", library: lib.name, total: need.length });
+          const byKey = new Map(need.map((it) => [it.key, it]));
+          const batches: string[][] = [];
+          for (let i = 0; i < need.length; i += 50) batches.push(need.slice(i, i + 50).map((it) => it.key));
+          let done = 0;
+          await pooled(batches, 4, async (ids) => {
+            try { for (const d of await fetchJellyfinByIds(address, token, ids, fetcher)) { const it = byKey.get(d.key); if (it) mergeDetail(it, d); } } catch { /* keep listing-only data; retried next scan */ }
+            done += ids.length; emit({ phase: "detailing", library: lib.name, fetched: done, total: need.length });
+          });
         }
 
         // Shows libraries: the shows themselves first (their metadata is what
@@ -1000,17 +1022,17 @@ export async function scanRemoteSource(
 }
 
 // existing key -> stored DateUpdated stamp, for deciding which items need detail
-function existingKeyStamps(db: DatabaseSync, type: ProviderType, lib: RemoteLibrary): Map<string, { du: string; full: boolean }> {
+function existingKeyStamps(db: DatabaseSync, type: ProviderType, lib: RemoteLibrary): Map<string, { du: string; full: boolean; etag: string }> {
   const tbl = KIND_TABLE[lib.kind], fk = KIND_FK[lib.kind];
   const keyTbl = providerKeyTable(type, lib.kind), keyCol = providerKeyCol(type);
-  const m = new Map<string, { du: string; full: boolean }>();
+  const m = new Map<string, { du: string; full: boolean; etag: string }>();
   try {
     for (const r of db.prepare(
       `SELECT pk.${keyCol} k, pk.Etag etag, mv.DateUpdated du FROM ${keyTbl} pk
          JOIN MediaItem mi ON mi.Id=pk.Id
          JOIN MediaVersion mv ON mv.${fk}=pk.Id
         WHERE mi.LibraryPathId IN (SELECT Id FROM LibraryPath WHERE LibraryId=?)`
-    ).all(lib.libraryId) as any[]) if (r.k) m.set(String(r.k), { du: r.du ?? "", full: String(r.etag ?? "").startsWith(FULL_ETAG) });
+    ).all(lib.libraryId) as any[]) if (r.k) m.set(String(r.k), { du: r.du ?? "", full: String(r.etag ?? "").startsWith(FULL_ETAG), etag: String(r.etag ?? "") });
   } catch { /* provider key table may not exist */ }
   return m;
 }
@@ -1021,5 +1043,7 @@ function existingKeyStamps(db: DatabaseSync, type: ProviderType, lib: RemoteLibr
 const FULL_ETAG = "full:";
 export const BACKFILL_PER_SCAN = 5000;
 function markFull(db: DatabaseSync, keyTbl: string, itemId: number, it: RemoteItem): void {
-  if (it.guids !== undefined) safeRun(db, `UPDATE ${keyTbl} SET Etag=? WHERE Id=?`, `${FULL_ETAG}${it.updatedAt}`, itemId);
+  if (it.guids !== undefined) safeRun(db, `UPDATE ${keyTbl} SET Etag=? WHERE Id=?`, fullEtag(it), itemId);
 }
+/** What a fully fetched item's provider-key Etag holds: the Jellyfin/Emby Etag, else Plex's updatedAt. */
+function fullEtag(it: RemoteItem): string { return `${FULL_ETAG}${it.etag ?? it.updatedAt}`; }
