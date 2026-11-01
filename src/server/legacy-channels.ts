@@ -16,12 +16,20 @@
 //   FillerPreset MidRoll (count | duration) -> chapter mid-roll from adCollection (adCount | adTarget)
 //   FillerPreset PostRoll (pad N) -> align N + padCollection, alignFit off (pad after any item)
 //   FillerPreset Tail / Fallback  -> fallbackCollection (channel fallback when the item has none)
+//
+// Block schedules become Weekly grid channels (`.grid.json`):
+//   PlayoutTemplate (days of week, optional date range) -> the days a template's cells go on (first by Index wins)
+//     a date range -> its own grid season ("MM-DD" to "MM-DD")
+//   TemplateItem (block at a start time)                -> a grid cell; runs of the same block merge into one
+//   Block's items                                       -> one palette program per distinct content + play order
+//   Playout Deco default filler                         -> fillerCollection (pads each show to the half hour)
+//   Deco dead-air fallback / channel fallback filler    -> the grid's fallback program (empty grid time)
 import { DatabaseSync } from "node:sqlite";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { toImmutableUri } from "../sqlite-resolver.js";
-import { makeCollectionRef, type CollKind } from "../collection-ref.js";
+import { makeCollectionRef, parseCollectionRef, type CollKind } from "../collection-ref.js";
 import type { ChannelMeta } from "./config.js";
 import { legacyLogoFile, importLegacyLogo, hasRealLogo } from "./channel-logos.js";
 
@@ -58,6 +66,9 @@ export interface LegacyChannelPlan {
   // free number to use instead. Numbers must be unique across the lineup.
   numberClash?: string;
   suggestedNumber?: string;
+  // block schedules: blocks that had no items (legacy may have deleted them; an
+  // older DB copy with fewer empty blocks is preferred, see planLegacyImportMulti)
+  emptyBlocks?: number;
   meta: Partial<ChannelMeta>;
   // the channel's legacy logo: a cached file (by its cache key) or a URL; `file`
   // is missing when the cache key is known but the file isn't on this machine
@@ -157,9 +168,163 @@ export function planLegacyImport(legacyDbPath: string, opts: {
       return c.content;
     };
 
+    // ---- Block schedules -> Weekly grid --------------------------------------
+    const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const dayNames = (ds: number[]) => ds.map((d) => DAYS[d]).join(", ");
+    const clock = (t: unknown) => { const m = /^(?:\d+\.)?(\d+):(\d+)/.exec(String(t ?? "")); return m ? Number(m[1]) * 60 + Number(m[2]) : 0; };
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    /** A content item's palette title: the show (and season), or the collection's name. */
+    const contentTitle = (ct: number, it: any, c: { content: string }): string => {
+      if (ct === 1) return one(`SELECT Title t FROM ShowMetadata WHERE ShowId=?`, it.MediaItemId)?.t ?? "Show";
+      if (ct === 2) {
+        const se = one(`SELECT ShowId, SeasonNumber FROM Season WHERE Id=?`, it.MediaItemId);
+        return `${one(`SELECT Title t FROM ShowMetadata WHERE ShowId=?`, se?.ShowId)?.t ?? "Show"} S${se?.SeasonNumber ?? "?"}`;
+      }
+      return parseCollectionRef(c.content).name;
+    };
+
+    /** A block playout's templates as a `.grid.json` config, or null (warnings say why). */
+    const planBlockSchedule = (r: any, plan: LegacyChannelPlan, warnings: string[]): { config: any; schedule: string } | null => {
+      if (!has("PlayoutTemplate") || !has("TemplateItem")) { warnings.push("this legacy version's block tables aren't recognized"); return null; }
+      const pts = all(`SELECT * FROM PlayoutTemplate WHERE PlayoutId=? ORDER BY "Index"`, r.pid);
+      if (!pts.length) { warnings.push("its block schedule has no templates assigned"); return null; }
+
+      // palette: one program per distinct content + order, shared by every block that plays it
+      const programs: any[] = [];
+      const byContent = new Map<string, string>();      // "<source>|<content>|<order>" -> program id
+      const byBlock = new Map<number, string | null>();  // block id -> program id
+      const ids = new Set<string>();
+      const emptied: string[] = [];
+      const addProgram = (title: string, source: "search" | "collection", value: string, order: string): string => {
+        const k = `${source}|${value}|${order}`;
+        const have = byContent.get(k);
+        if (have) return have;
+        const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "program";
+        let id = base;
+        for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
+        ids.add(id); byContent.set(k, id);
+        programs.push({ id, title, source, value, order });
+        return id;
+      };
+      const programFor = (blockId: number, blockName: string, minutes: number): string | null => {
+        if (byBlock.has(blockId)) return byBlock.get(blockId)!;
+        const where = `block "${blockName}"`;
+        const items = all(`SELECT * FROM BlockItem WHERE BlockId=? ORDER BY "Index"`, blockId);
+        let id: string | null = null;
+        if (!items.length) emptied.push(blockName);
+        else {
+          const it = items[0];
+          const c = content(it.CollectionType, it, warnings, where);
+          if (c) {
+            const ord = PLAYBACK_ORDER[it.PlaybackOrder] ?? { order: "shuffle", warn: `play order ${it.PlaybackOrder} imported as shuffle` };
+            if (ord.warn) warnings.push(`${where}: ${ord.warn}`);
+            id = addProgram(contentTitle(it.CollectionType, it, c), c.source, c.content, ord.order);
+            const same = (x: any) => x.CollectionType === it.CollectionType && x.CollectionId === it.CollectionId && x.MediaItemId === it.MediaItemId
+              && x.MultiCollectionId === it.MultiCollectionId && x.SmartCollectionId === it.SmartCollectionId;
+            if (items.some((x: any) => !same(x))) warnings.push(`${where} mixes several shows/collections — only its first ("${contentTitle(it.CollectionType, it, c)}") is imported`);
+            else if (items.length > 1) warnings.push(`${where} plays ${items.length} items in ${minutes} minutes — the grid plays as many as its time holds, each padded to the half hour`);
+          }
+          if (items.some((x: any) => x.IncludeInProgramGuide === 0)) warnings.push(`${where}: 'hide from guide' isn't supported — its items show in the guide`);
+        }
+        byBlock.set(blockId, id);
+        return id;
+      };
+
+      // seasons: the undated templates make the regular schedule, each date range its own season
+      type Season = { id: string; name: string; from?: string; to?: string; cells: any[]; taken: Set<number> };
+      const seasons = new Map<string, Season>();
+      const templateNames: string[] = [];
+      for (const pt of pts) {
+        const t = one(`SELECT Name n FROM Template WHERE Id=?`, pt.TemplateId);
+        if (!t) { warnings.push(`a template assigned to this playout no longer exists`); continue; }
+        const where = `template "${t.n}"`;
+        templateNames.push(t.n);
+        let days: number[] = [];
+        try { days = (JSON.parse(pt.DaysOfWeek ?? "[]") as string[]).map((d) => DAYS.findIndex((x) => x.toLowerCase() === String(d).toLowerCase())).filter((d) => d >= 0); } catch { /* none */ }
+        if (!days.length) { warnings.push(`${where} isn't assigned to any day of the week — skipped`); continue; }
+        const listed = (s: unknown) => String(s ?? "").split(",").filter((x) => x.trim()).length;
+        if (pt.DaysOfMonth != null && listed(pt.DaysOfMonth) < 31) warnings.push(`${where}: limiting it to certain days of the month isn't supported — it's used on every ${dayNames(days)}`);
+        if (pt.MonthsOfYear != null && listed(pt.MonthsOfYear) < 12 && !pt.LimitToDateRange) warnings.push(`${where}: limiting it to certain months isn't supported — use a dated season on the grid instead`);
+        if (pt.DecoTemplateId) warnings.push(`${where}: its deco template (filler/watermarks by time of day) isn't imported`);
+        const range = pt.LimitToDateRange && pt.StartMonth && pt.EndMonth
+          ? { from: `${pad2(pt.StartMonth)}-${pad2(pt.StartDay || 1)}`, to: `${pad2(pt.EndMonth)}-${pad2(pt.EndDay || 31)}` } : null;
+        const sk = range ? `${range.from}|${range.to}` : "";
+        let season = seasons.get(sk);
+        if (!season) {
+          season = range ? { id: `dated-${seasons.size}`, name: `${t.n} (${range.from} to ${range.to})`, ...range, cells: [], taken: new Set() } : { id: "default", name: "Regular schedule", cells: [], taken: new Set() };
+          seasons.set(sk, season);
+        }
+        // legacy uses the first matching template per day
+        const free = days.filter((d) => !season!.taken.has(d));
+        if (free.length < days.length) warnings.push(`${where}: ${dayNames(days.filter((d) => !free.includes(d)))} already use an earlier template — skipped on those days`);
+        if (!free.length) continue;
+        free.forEach((d) => season!.taken.add(d));
+
+        // one day's cells (the same on each of the template's days); back-to-back runs of a program merge
+        const cells: { start: number; span: number; program: string }[] = [];
+        const tis = all(`SELECT ti.StartTime st, b.Id bid, b.Name bname, b.Minutes mins FROM TemplateItem ti JOIN Block b ON b.Id=ti.BlockId WHERE ti.TemplateId=? ORDER BY ti.StartTime`, pt.TemplateId);
+        if (!tis.length) warnings.push(`${where} has no blocks`);
+        for (const ti of tis) {
+          const mins = Math.max(1, Number(ti.mins) || 30);
+          const pid = programFor(ti.bid, ti.bname, mins);
+          if (!pid) continue;
+          const at = clock(ti.st);
+          const start = Math.round(at / 30) * 30;
+          const end = Math.min(1440, Math.max(start + 30, Math.round((at + mins) / 30) * 30));
+          if (start !== at || end !== at + mins) warnings.push(`block "${ti.bname}" at ${String(ti.st).slice(0, 5)} (${mins} min) moved to the grid's half hours`);
+          const last = cells[cells.length - 1];
+          if (last && last.start + last.span > start) { warnings.push(`block "${ti.bname}" at ${String(ti.st).slice(0, 5)} overlaps the block before it — skipped`); continue; }
+          if (last && last.program === pid && last.start + last.span === start) last.span = end - last.start;
+          else if (end > start) cells.push({ start, span: end - start, program: pid });
+        }
+        for (const d of free) for (const c of cells) season.cells.push({ day: d, ...c });
+      }
+      if (!programs.length) { warnings.push("nothing in its block schedule could be imported"); return null; }
+
+      // filler from the playout's deco: default filler pads each show to the half
+      // hour; dead-air fallback (else the channel's fallback filler) fills empty grid time
+      const cfg: any = { imported: { from: "ErsatzTV legacy", channel: `${r.num} ${r.name}`, schedule: templateNames.join(", "), warnings }, programs, events: [], breaks: { enabled: false } };
+      const deco = r.decoId != null && has("Deco") ? one(`SELECT * FROM Deco WHERE Id=?`, r.decoId) : null;
+      const decoContent = (prefix: string, role: string) => content(deco[`${prefix}CollectionType`], {
+        CollectionId: deco[`${prefix}CollectionId`], MediaItemId: deco[`${prefix}MediaItemId`],
+        MultiCollectionId: deco[`${prefix}MultiCollectionId`], SmartCollectionId: deco[`${prefix}SmartCollectionId`],
+      }, warnings, `deco "${deco.Name}" ${role}`);
+      const OVERRIDE = 2; // legacy DecoMode: 0 inherit, 1 disable, 2 override
+      if (deco && Number(deco.DefaultFillerMode) === OVERRIDE) {
+        const c = decoContent("DefaultFiller", "default filler");
+        if (c?.source === "collection") cfg.fillerCollection = c.content;
+        else if (c) warnings.push(`deco "${deco.Name}" default filler uses a show/season, which filler can't use yet — skipped`);
+      }
+      if (!cfg.fillerCollection) warnings.push("no default filler on its deco — shows aren't padded to the half hour, so a block's shows play back-to-back until its time ends");
+      let fallback: string | null = null;
+      if (deco && Number(deco.DeadAirFallbackMode) === OVERRIDE) {
+        const c = decoContent("DeadAirFallback", "dead-air fallback");
+        if (c) fallback = addProgram("Fallback", c.source, c.content, "shuffle");
+      }
+      if (!fallback) {
+        const fb = presets.get(r.chFallback);
+        const ref = fb ? fillerRef(fb, warnings, "fallback") : null;
+        if (ref) fallback = addProgram("Fallback", "collection", ref, "shuffle");
+      }
+      if (fallback) cfg.fallback = fallback;
+      if (emptied.length) {
+        const names = [...new Set(emptied)];
+        const listed = names.slice(0, 5).map((n) => `"${n}"`).join(", ") + (names.length > 5 ? ` and ${names.length - 5} more` : "");
+        warnings.push(`${emptied.length === 1 ? "block" : "blocks"} ${listed} ${emptied.length === 1 ? "has" : "have"} no items — ${fallback ? "the fallback plays" : "nothing airs"} in ${emptied.length === 1 ? "its" : "their"} time${fallback ? "" : " (pick a fallback on the grid, or put a show there)"}`);
+        // most blocks empty: legacy deleted their items (it does when a show is re-created by a rescan)
+        if (emptied.length * 2 > byBlock.size) warnings.unshift(`${emptied.length} of ${byBlock.size} blocks lost their items in this legacy database — if you have an older copy of it, use "Recover lost schedules" to import them from there`);
+      }
+      const uncovered = [0, 1, 2, 3, 4, 5, 6].filter((d) => !seasons.get("")?.taken.has(d));
+      if (uncovered.length) warnings.push(`no template is used on ${dayNames(uncovered)} (outside dated seasons) — ${fallback ? "those days air only the fallback" : "nothing airs those days"}`);
+      cfg.seasons = [...seasons.values()].map(({ taken: _t, ...s }) => s);
+      plan.emptyBlocks = emptied.length;
+      return { config: cfg, schedule: templateNames.join(", ") };
+    };
+
     const channelCols = colsOf("Channel");
     const col = (c: string) => (channelCols.has(c) ? `c."${c}"` : "NULL");
-    const rows = all(`SELECT p.Id pid, p.ScheduleKind sk, p.ProgramScheduleId psid, ${has("Playout") && colsOf("Playout").has("ScheduleFile") ? "p.ScheduleFile" : "NULL"} yaml,
+    const playoutCols = colsOf("Playout");
+    const rows = all(`SELECT p.Id pid, p.ScheduleKind sk, p.ProgramScheduleId psid, ${playoutCols.has("ScheduleFile") ? "p.ScheduleFile" : "NULL"} yaml, ${playoutCols.has("DecoId") ? "p.DecoId" : "NULL"} decoId,
         c.Id cid, c.Number num, c.Name name, ${col("Group")} grp, ${col("IsEnabled")} enabled, ${col("FallbackFillerId")} chFallback,
         ${col("PreferredAudioLanguageCode")} audio, ${col("PreferredSubtitleLanguageCode")} subs, ${col("SubtitleMode")} submode, ${col("WatermarkId")} wm
       FROM Playout p JOIN Channel c ON c.Id=p.ChannelId ORDER BY CAST(c.Number AS REAL), c.Number`);
@@ -208,7 +373,16 @@ export function planLegacyImport(legacyDbPath: string, opts: {
         else warnings.push(`YAML file ${r.yaml ?? "(none)"} isn't reachable from here — copy it into the channels folder yourself`);
         continue;
       }
-      if (kind !== "classic") { warnings.push(kind === "block" ? "Block schedules aren't importable yet" : `schedule kind ${r.sk} isn't importable`); continue; }
+      if (kind === "block") {
+        const b = planBlockSchedule(r, plan, warnings);
+        if (!b) continue;
+        plan.schedule = b.schedule;
+        plan.file = `${name}.grid.json`;
+        setStatus(plan);
+        plan.config = JSON.stringify(b.config, null, 2);
+        continue;
+      }
+      if (kind !== "classic") { warnings.push(`schedule kind ${r.sk} isn't importable`); continue; }
 
       const ps = one(`SELECT * FROM ProgramSchedule WHERE Id=?`, r.psid);
       if (!ps) { warnings.push("its schedule no longer exists"); continue; }
@@ -322,7 +496,8 @@ export function planLegacyImport(legacyDbPath: string, opts: {
 /** Legacy deletes a schedule's items when their show/season is removed (e.g. a
  *  Plex rescan re-creating shows), so an older copy of the legacy DB may still
  *  hold a schedule the live one lost. Plan against each DB in order and, per
- *  channel, keep the first plan that produced a config. */
+ *  channel, keep the first plan that produced a config (for block schedules:
+ *  the one with the fewest emptied blocks). */
 export function planLegacyImportMulti(paths: string[], opts: Parameters<typeof planLegacyImport>[1]): LegacyChannelPlan[] {
   const [primary, ...others] = paths.filter((p) => p && existsSync(p));
   if (!primary) return [];
@@ -330,9 +505,10 @@ export function planLegacyImportMulti(paths: string[], opts: Parameters<typeof p
   for (const alt of others) {
     const altPlans = new Map(planLegacyImport(alt, opts).map((p) => [`${p.channelId}|${p.number}`, p]));
     plans.forEach((p, i) => {
-      if (p.config || p.yamlSource) return;
+      const lost = (x: LegacyChannelPlan) => x.emptyBlocks ?? 0;
+      if ((p.config || p.yamlSource) && !lost(p)) return;
       const a = altPlans.get(`${p.channelId}|${p.number}`);
-      if (a && (a.config || a.yamlSource)) {
+      if (a && (a.config || a.yamlSource) && (!(p.config || p.yamlSource) || lost(a) < lost(p))) {
         a.warnings.unshift(`recovered from ${alt} — the live legacy DB lost this schedule's items`);
         plans[i] = a;
       }
@@ -345,7 +521,7 @@ export function planLegacyImportMulti(paths: string[], opts: Parameters<typeof p
 export type ContentFix = "refresh-metadata" | "scan-source" | "import-library" | "enable-library" | null;
 export interface ContentProblem { role: string; what: string; reason: string; fix: ContentFix; }
 export interface ContentCheck { items: number; airsNothing: boolean; problems: ContentProblem[]; }
-const ROLE: Record<string, string> = { "": "main content", _mid: "mid-roll filler", _pad: "post-roll filler", _pre: "pre-roll filler", _fallback: "fallback filler" };
+const ROLE: Record<string, string> = { "": "main content", _mid: "mid-roll filler", _pad: "post-roll filler", _pre: "pre-roll filler", _fallback: "fallback filler", _gridpad: "filler (pads shows to the half hour)" };
 
 /** Resolve a plan's content against the library the way a build would, and
  *  explain anything that comes back empty with the fix the user should run. */
@@ -357,8 +533,16 @@ export async function checkPlanContent(
   unfiltered?: () => { resolveContent(def: any): Promise<unknown[]> },
 ): Promise<ContentCheck | null> {
   if (!plan.config) return null;
-  const { compileBlocks } = await import("../scheduling/blocks-module.js");
-  const doc = compileBlocks(JSON.parse(plan.config));
+  const grid = !!plan.file?.endsWith(".grid.json");
+  let doc;
+  if (grid) { const { compileGrid, parseGrid } = await import("../scheduling/grid-module.js"); doc = compileGrid(parseGrid(plan.config)); }
+  else { const { compileBlocks } = await import("../scheduling/blocks-module.js"); doc = compileBlocks(JSON.parse(plan.config)); }
+  // a content key's role suffix ("" = main content); null = not checked
+  const roleOf = (key: string): string | null => {
+    if (grid) return key === "GRID_FILLER" ? "_gridpad" : key === "P_FALLBACK" ? "_fallback" : key.startsWith("P_") ? "" : null;
+    const m = /^b\d+(.*)$/.exec(key); const suffix = m?.[1] ?? "";
+    return suffix === "_fill" ? null : suffix; // _fill: library pool (not used by imports)
+  };
   let lib: DatabaseSync | null = null;
   try { if (existsSync(libraryDbPath)) lib = new DatabaseSync(toImmutableUri(libraryDbPath), { readOnly: true }); } catch { lib = null; }
   const get = (sql: string, ...a: any[]): any => { try { return lib?.prepare(sql).get(...a); } catch { return undefined; } };
@@ -367,8 +551,8 @@ export async function checkPlanContent(
     const problems: ContentProblem[] = [];
     let items = 0, mainEmpty = true;
     for (const def of doc.content) {
-      const m = /^b\d+(.*)$/.exec(def.key); const suffix = m?.[1] ?? "";
-      if (suffix === "_fill") continue; // library pool (not used by imports)
+      const suffix = roleOf(def.key);
+      if (suffix === null) continue;
       const n = await count(def);
       if (!suffix) { items += n; if (n > 0) mainEmpty = false; }
       if (n > 0) continue;

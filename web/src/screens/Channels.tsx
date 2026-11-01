@@ -238,7 +238,7 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
   return (
     <section className="screen split">
       <div className="list-pane">
-        <div className="pane-head"><h2>Channels</h2><div>{legacyImport && <><button onClick={() => { setImporting((v) => !v); setSel(null); }} title="Import channels and Classic schedules from ErsatzTV legacy">{importing ? "Close import" : "Import…"}</button> </>}<button onClick={() => setCreating((v) => !v)}>{creating ? "Cancel" : "+ New"}</button></div></div>
+        <div className="pane-head"><h2>Channels</h2><div>{legacyImport && <><button onClick={() => { setImporting((v) => !v); setSel(null); }} title="Import channels and their Classic, Block and YAML schedules from ErsatzTV legacy">{importing ? "Close import" : "Import…"}</button> </>}<button onClick={() => setCreating((v) => !v)}>{creating ? "Cancel" : "+ New"}</button></div></div>
         {creating && (
           <div className="meta-card" style={{ marginBottom: 10 }}>
             <label>Name<input value={newCh.name} onChange={(e) => setNewCh({ ...newCh, name: e.target.value })} placeholder="Saturday Mornings" /></label>

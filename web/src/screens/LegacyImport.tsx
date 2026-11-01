@@ -1,4 +1,4 @@
-// Import channels + Classic schedules from ErsatzTV legacy, as a guided workflow:
+// Import channels + Classic/Block schedules from ErsatzTV legacy, as a guided workflow:
 //   1. Choose — the server's read-only plan, with a content check per channel
 //      (would it air anything? if not, why, and which fix to run)
 //   2. Import — write the selected channels
@@ -118,7 +118,7 @@ export function LegacyImport({ onImported, onNavigate, onOpenChannel }: Props) {
   return (
     <div>
       <Step n={1} title="Choose channels">
-        Classic schedules become <b>Schedule (blocks)</b> channels you can edit here; YAML playouts are copied as-is.
+        Classic schedules become <b>Schedule (blocks)</b> channels and Block schedules become <b>Weekly grid</b> channels, both editable here; YAML playouts are copied as-is.
         Each channel is checked against your library so you can see what it would air. Nothing is written until you import.
       </Step>
 
