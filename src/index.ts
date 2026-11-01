@@ -12,7 +12,8 @@ import { moduleForFile } from "./scheduling/registry.js";
 import { buildTimeshift, parseTimeshift } from "./scheduling/timeshift-module.js";
 import { buildRemote } from "./scheduling/remote-module.js";
 import { applyOverlays } from "./overlays.js";
-import { PLAYOUT_VERSION_GRAPHICS } from "./model.js";
+import { PLAYOUT_VERSION_GRAPHICS, PLAYOUT_VERSION_LAYOUT } from "./model.js";
+export * from "./overlays.js";
 
 export * from "./model.js";
 export * from "./yaml.js";
@@ -83,7 +84,7 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
   let overlayProblems: string[] | undefined;
   if (req.options.overlays) {
     const r = await applyOverlays(playout.items, engine.getOverlayRefs(), engine.getLabels(), engine.getGuide(), req.options.tz, req.options.overlays);
-    if (r.items) playout.version = PLAYOUT_VERSION_GRAPHICS;
+    if (r.items) playout.version = r.canvas ? PLAYOUT_VERSION_LAYOUT : PLAYOUT_VERSION_GRAPHICS;
     if (r.problems.length) overlayProblems = r.problems;
   }
   const file = await writePlayout(

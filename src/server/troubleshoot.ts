@@ -34,8 +34,9 @@ import { overlayOptionsFor } from "./overlay-library.js";
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 import { buildUpNextAss, DEFAULT_ASS_LAYOUT } from "../upnext-ass.js";
 import { formatRfc3339 } from "../time.js";
-import { PLAYOUT_VERSION_GRAPHICS, type GraphicsLayer, type PlayoutItem } from "../model.js";
+import { PLAYOUT_VERSION_GRAPHICS, PLAYOUT_VERSION_LAYOUT, type GraphicsLayer, type PlayoutItem } from "../model.js";
 import { parseWindowRange, playoutFilename } from "../emit.js";
+import { playoutBaseDir } from "./nextgen.js";
 
 const absUnder = (root: string, p: string) => (isAbsolute(p) || /^[A-Za-z]:/.test(p) ? p : join(root, p));
 const LEAD_MS = 1500;         // black before an item played from its start (covers the request)
@@ -113,7 +114,8 @@ const encoderFor = (codec: string, accel: string) => {
 
 // ---- test plays ----------------------------------------------------------------
 export interface TestRequest {
-  kind: "item" | "upnext";
+  kind: "item" | "upnext" | "playout";
+  file?: string; itemId?: string;                    // kind "playout": a channel's built playout file + item id
   type?: string; id?: number; startSec?: number;   // kind "item"
   at?: number; theme?: string;                      // kind "upnext" (the card lists from `at`)
   channel?: string;    // item: whose audio/subtitle settings (and overlays) to use; upnext: the channel
@@ -272,6 +274,38 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
     catch (e) { reply.code(400); return { error: (e as Error).message }; }
   });
   app.get("/api/troubleshoot/play", async () => (current ? publicRun(current.run) : null));
+  // when a channel's overlays next appear, from its built playout (for the Overlays tab)
+  app.get("/api/troubleshoot/overlay-moments", async (req) => {
+    const q = req.query as { channel?: string; overlay?: string };
+    const channel = String(q.channel ?? "");
+    const dir = join(playoutBaseDir(store, root), channel);
+    if (!channel || !existsSync(dir)) return { moments: [], note: "This channel hasn't been built yet — build it on the Build page first." };
+    const now = Date.now();
+    const files = (await readdir(dir)).filter((n) => n.endsWith(".json") && !n.endsWith(".labels.json")).sort();
+    const moments: { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }[] = [];
+    let tagged = 0;
+    for (const name of files) {
+      const w = parseWindowRange(name);
+      if (w && w.finishMs < now) continue;
+      let labels: Record<string, any> = {};
+      try { labels = JSON.parse(await readFile(join(dir, name.replace(/\.json$/, ".labels.json")), "utf8")); } catch { /* none */ }
+      const pl = JSON.parse(await readFile(join(dir, name), "utf8"));
+      for (const it of pl.items ?? []) {
+        const marks: { id: string; at: number }[] = labels[it.id]?.overlays ?? [];
+        if (marks.length) tagged++;
+        const start = Date.parse(it.start), finish = Date.parse(it.finish);
+        for (const m of marks) {
+          if (q.overlay && m.id !== q.overlay) continue;
+          const at = start + m.at;
+          if (at < now - 30_000 || at >= finish) continue;
+          moments.push({ file: name, itemId: it.id, itemStart: start, at, overlay: m.id, path: it.source?.path ?? "", filler: !!labels[it.id]?.fillerKind });
+        }
+      }
+      if (moments.length >= 40) break;
+    }
+    moments.sort((a, b) => a.at - b.at);
+    return { moments: moments.slice(0, 20), note: tagged ? "" : "No overlays are in this channel's built playout yet — rebuild the channel after giving it overlays." };
+  });
   app.get("/api/troubleshoot/play/:id", async (req, reply) => {
     const r = runs.get((req.params as any).id);
     if (!r) { reply.code(404); return { error: "That test isn't available any more." }; }
@@ -341,6 +375,22 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       mkItem = (t) => { const it = upNextItem(u, "2", t, t + D, at, tz); if (ass) it.tracks = { ...(it.tracks ?? {}), ...ass }; return it; };
       label = `Up-next card · ${channel} · ${u.theme}`;
       targetSec = D / 1000;
+    } else if (req.kind === "playout") {
+      // an item exactly as the channel's build made it (overlays included)
+      const dir = join(playoutBaseDir(store, root), String(req.channel ?? ""));
+      const file = basename(String(req.file ?? ""));
+      if (!req.channel || !file.endsWith(".json") || !existsSync(join(dir, file))) throw new Error("That playout window isn't there any more — rebuild the channel and pick again.");
+      const pl = JSON.parse(await readFile(join(dir, file), "utf8"));
+      const src = (pl.items ?? []).find((i: PlayoutItem) => i.id === String(req.itemId));
+      if (!src) throw new Error("That playout item isn't there any more — rebuild the channel and pick again.");
+      const lenSec = Math.max(1, (Date.parse(src.finish) - Date.parse(src.start)) / 1000);
+      startSec = Math.min(Math.max(0, Number(req.startSec) || 0), Math.max(0, lenSec - 2));
+      targetSec = Math.min(Math.max(5, Number(req.durationSec) || 30), 300, lenSec - startSec);
+      const path = (src.source as any)?.path as string | undefined;
+      if (path && !existsSync(path)) throw new Error(`The file isn't reachable from this machine: ${path}`);
+      mkItem = (t) => ({ ...clone(src), id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + lenSec * 1000, tz) });
+      label = `${req.channel} · ${path ? basename(path).replace(/\.[^.]+$/, "") : "item"}`;
+      sourcePath = path;
     } else {
       const d = itemDetail(ctx.libDb(), String(req.type), Number(req.id));
       if (!d?.path) throw new Error("Pick an item from the library first.");
@@ -414,7 +464,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       const first = Date.parse(items[0].start), last = e + WINDOW_MS;
       await rm(playoutFile, { force: true });
       playoutFile = join(playoutDir, playoutFilename(first, last, tz));
-      await writeFile(playoutFile + ".tmp", json({ version: PLAYOUT_VERSION_GRAPHICS, items }), "utf8");
+      await writeFile(playoutFile + ".tmp", json({ version: items.some((i: PlayoutItem) => i.graphics?.some((g) => g.layout)) ? PLAYOUT_VERSION_LAYOUT : PLAYOUT_VERSION_GRAPHICS, items }), "utf8");
       await rename(playoutFile + ".tmp", playoutFile);
       return wanted;
     };

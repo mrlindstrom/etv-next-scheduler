@@ -568,4 +568,11 @@ th[aria-sort=ascending], th[aria-sort=descending] { color: var(--accent-hi); }
 .ov-picker { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ov-picker .chip { display: inline-flex; align-items: center; gap: 4px; }
 .ov-picker .chip button { padding: 0 4px; border: none; background: none; color: var(--muted); }
+.ov-group-head { margin: 14px 0 6px; font-size: 11px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
+.ov-example-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.ov-styles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ov-season { margin: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+.ov-season label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+.ov-anim-row { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.ov-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
 @media (max-width: 1100px) { .ov-layout { grid-template-columns: 1fr; } .ov-side { position: static; } .ov-panels { grid-template-columns: 1fr; } }

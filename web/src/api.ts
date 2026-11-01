@@ -17,7 +17,9 @@ export const logoSrc = (logo?: string): string => (!logo ? "" : /^https?:\/\//i.
 /** A legacy channel's logo, for previews in the import list. */
 export const legacyLogoSrc = (p: LegacyChannelPlan): string => p.logo?.url ?? (p.logo?.hash && p.logo.file ? `/api/legacy/logo/${p.logo.hash}` : "");
 // ---- overlays (timed graphics over programmes; see src/overlays.ts) ----
-interface OvBox { x: number; y: number; w: number; h: number; opacity?: number }
+import type { LayerAnim } from "../../src/overlay-anim.js";
+export type { LayerAnim } from "../../src/overlay-anim.js";
+interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string })
   | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean })
@@ -25,12 +27,14 @@ export type OverlayLayer =
   | (OvBox & { type: "video"; src: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number }
 export type OverlayLocation = "top_left" | "top_center" | "top_right" | "center_left" | "center" | "center_right" | "bottom_left" | "bottom_center" | "bottom_right";
-export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; updatedAt?: string }
+export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
+export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }
+export interface OverlayMoment { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }
 export interface OverlayField { key: string; label: string; sample: string }
 /** Where an overlay asset (`assets/<file>`, or an absolute path on the server) shows in the browser. */
 export const CHANNEL_LOGO = "channel-logo";
 const LOGO_PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect x="6" y="6" width="388" height="388" rx="40" fill="rgba(79,140,255,.25)" stroke="#4f8cff" stroke-width="8" stroke-dasharray="24 14"/><text x="200" y="185" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">CHANNEL</text><text x="200" y="260" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">LOGO</text></svg>');
-export const overlayAssetSrc = (src: string): string => (src === CHANNEL_LOGO ? LOGO_PLACEHOLDER : src.startsWith("assets/") ? `/overlay-assets/${src.slice(7)}` : "");
+export const overlayAssetSrc = (src: string): string => (src === CHANNEL_LOGO ? LOGO_PLACEHOLDER : src.startsWith("assets/") ? `/overlay-assets/${src.slice(7)}` : src.startsWith("example:") ? `/overlay-examples/${src.slice(8)}` : "");
 
 export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; repeats?: boolean; ads?: number; }
 export interface ShowIf { key: string; equals: string | string[]; }
@@ -103,7 +107,7 @@ export interface TroubleSystem {
   streaming: { codec: string; accel: string; accelLabel: string; encoder: string; size: string; bitrateKbps: number; audio: string };
 }
 export interface HwTestResult { accel: string; label: string; codec: string; encoder: string; ok: boolean; ms: number; error?: string; current: boolean; }
-export interface TestRequest { kind: "item" | "upnext"; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
+export interface TestRequest { kind: "item" | "upnext" | "playout"; file?: string; itemId?: string; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
 export interface TestRun {
   id: string; label: string; status: "starting" | "running" | "finishing" | "done" | "failed" | "stopped"; message: string; startedAt: number; finishedAt?: number;
   request: TestRequest; accel: string; encoder: string; port: number; targetSec: number; capturedSec: number; firstSegmentSec?: number; speed?: number;
@@ -245,6 +249,9 @@ export const api = {
   scheduler: (): Promise<SchedulerStatus> => fetch("/api/scheduler").then(j),
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
   overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
+  overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
+  overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string }> =>
+    fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),
   saveOverlay: (o: Overlay): Promise<Overlay> => fetch("/api/overlays", opts("POST", o)).then(j),
   deleteOverlay: (id: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/${encodeURIComponent(id)}`, opts("DELETE")).then(j),
   uploadOverlayAsset: (file: File): Promise<{ src: string; kind: "image" | "video"; error?: string }> =>

@@ -139,6 +139,8 @@ export interface GraphicsLayer {
   /** margins measured from the visible picture, not the letterbox / pillarbox bars */
   within_source_content?: boolean;
   timing?: PeriodicTiming;
+  /** canvas only (schema 0.0.7): where the canvas sits — the whole frame, or a region at its own size */
+  layout?: { mode: "full_frame" } | { mode: "region"; origin: { x: number; y: number } };
 }
 
 /** Back-compat alias: a watermark is just a media graphics layer. */
@@ -186,3 +188,5 @@ export interface Playout {
 export const PLAYOUT_VERSION = "https://ersatztv.org/playout/version/0.0.2";
 // 0.0.4 adds GraphicsLayer.kind ("canvas") — required only by the up-next card.
 export const PLAYOUT_VERSION_GRAPHICS = "https://ersatztv.org/playout/version/0.0.4";
+// 0.0.7 adds canvas `layout` (region) — animated overlays (ErsatzTV next 0.2.3+).
+export const PLAYOUT_VERSION_LAYOUT = "https://ersatztv.org/playout/version/0.0.7";

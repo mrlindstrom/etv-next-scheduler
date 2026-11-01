@@ -1,0 +1,25 @@
+{
+  "category": "Bugs",
+  "name": "Channel logo bug",
+  "description": "Each channel's own logo in the corner, softly faded in.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 70,
+  "layers": [
+    {
+      "type": "image",
+      "x": 1640,
+      "y": 880,
+      "w": 190,
+      "h": 140,
+      "src": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 1
+        }
+      }
+    }
+  ]
+}

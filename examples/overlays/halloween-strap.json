@@ -1,0 +1,148 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Halloween strap",
+  "description": "Purple and orange with a jack-o'-lantern and a bat, the two weeks before Halloween.",
+  "season": {
+    "holiday": "halloween",
+    "before": 14,
+    "after": 0
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#2e1065",
+      "radius": 16,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 990,
+      "w": 1000,
+      "h": 10,
+      "color": "#f97316",
+      "radius": 4,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 108,
+      "y": 846,
+      "w": 150,
+      "h": 150,
+      "src": "example:pumpkin.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 858,
+      "w": 760,
+      "h": 70,
+      "text": "Happy Halloween!",
+      "size": 54,
+      "color": "#fb923c",
+      "font": "Impact",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 932,
+      "w": 760,
+      "h": 46,
+      "text": "Up next on {{channel}}: {{next_show}}",
+      "size": 30,
+      "color": "#e9d5ff",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 968,
+      "y": 772,
+      "w": 120,
+      "h": 96,
+      "src": "example:bat.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.33
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

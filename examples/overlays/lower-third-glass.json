@@ -1,0 +1,83 @@
+{
+  "category": "Lower thirds",
+  "name": "Glass bar",
+  "description": "A dark, see-through rounded bar that grows from the middle.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 45,
+    "showSeconds": 8
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 360,
+      "y": 880,
+      "w": 1200,
+      "h": 120,
+      "color": "#0f172a",
+      "radius": 60,
+      "opacity": 78,
+      "border": "#ffffff",
+      "borderWidth": 2,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 400,
+      "y": 893,
+      "w": 1120,
+      "h": 56,
+      "text": "{{show}}",
+      "size": 46,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 400,
+      "y": 950,
+      "w": 1120,
+      "h": 40,
+      "text": "{{episode_code}} · {{title}}",
+      "size": 28,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.43
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    }
+  ]
+}

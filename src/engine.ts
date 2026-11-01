@@ -68,7 +68,9 @@ interface AddOpts { fillerKind?: FillerKind; contentKey?: string; }
 const FADE_MS = 600;
 
 /** Non-schema per-item metadata used only by the preview UI (sidecar file). */
-export interface ItemLabel { key?: string; fillerKind?: string; type?: string; tags?: string[]; }
+export interface ItemLabel { key?: string; fillerKind?: string; type?: string; tags?: string[];
+  /** overlays on the item and when each first shows (ms from the item's start; 0 = from the start) */
+  overlays?: { id: string; at: number }[]; }
 
 /** One guide (XMLTV) programme: a whole show block spanning its slot. */
 export interface GuideEntry { startMs: number; stopMs: number; item: MediaItem; }

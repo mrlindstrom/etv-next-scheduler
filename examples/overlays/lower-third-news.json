@@ -1,0 +1,103 @@
+{
+  "category": "Lower thirds",
+  "name": "News strap",
+  "description": "Blue strap with a gold edge: the show, then the episode. A minute into each show.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 60,
+    "showSeconds": 9
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 846,
+      "w": 980,
+      "h": 150,
+      "color": "#1d4ed8",
+      "radius": 12,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 846,
+      "w": 14,
+      "h": 150,
+      "color": "#fbbf24",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 138,
+      "y": 860,
+      "w": 910,
+      "h": 66,
+      "text": "{{show}}",
+      "size": 54,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 138,
+      "y": 930,
+      "w": 910,
+      "h": 50,
+      "text": "{{episode_code}}  {{title}}",
+      "size": 32,
+      "color": "#dbeafe",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    }
+  ]
+}

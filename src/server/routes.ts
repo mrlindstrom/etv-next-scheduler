@@ -36,7 +36,7 @@ import { indexService } from "./index-service.js";
 import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
 import { SqliteResolver } from "../sqlite-resolver.js";
-import { overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES } from "./overlay-library.js";
+import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES } from "./overlay-library.js";
 import { OVERLAY_FIELDS, sampleVars, overlaySvg, rasterize, assetPath, fillTemplate, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
@@ -836,6 +836,24 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   app.addContentTypeParser(/^video\//, { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
   if (!app.hasContentTypeParser("application/octet-stream")) app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
   try { pruneOverlayCache(overlayCacheDir(store, ROOT)); } catch { /* ignore */ }
+  const examplesDir = overlayExamplesDir(ROOT); // also where example: image sources resolve
+  // ready-made overlays that ship with the scheduler (examples/overlays/*.json)
+  app.get("/api/overlays/examples", async () => {
+    const dir = join(examplesDir, "..");
+    const out: any[] = [];
+    try {
+      for (const n of (await readdir(dir)).filter((x) => x.endsWith(".json")).sort()) {
+        try { out.push({ ...JSON.parse(await readFile(join(dir, n), "utf8")), id: `example:${n.replace(/\.json$/, "")}` }); } catch { /* skip a broken file */ }
+      }
+    } catch { /* no examples folder */ }
+    return out;
+  });
+  app.get("/overlay-examples/:file", async (req, reply) => {
+    const file = String((req.params as any).file);
+    if (!/^[\w.-]+\.(svg|png|jpg|webp|gif)$/i.test(file) || !existsSync(join(examplesDir, file))) return reply.code(404).send();
+    reply.header("content-type", logoContentType(file)).header("cache-control", "public, max-age=3600");
+    return reply.send(await readFile(join(examplesDir, file)));
+  });
   app.get("/api/overlays", async () => {
     const usedBy: Record<string, string[]> = {};
     for (const m of store.channelMetas()) for (const id of m.overlays ?? []) (usedBy[id] ??= []).push(m.name);

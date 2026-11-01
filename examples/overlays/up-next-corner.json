@@ -1,0 +1,99 @@
+{
+  "category": "Up next",
+  "name": "Up next — corner card",
+  "description": "Flies in from the right two minutes before each show ends.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 120,
+    "showSeconds": 12
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 1196,
+      "y": 836,
+      "w": 628,
+      "h": 160,
+      "color": "#111827",
+      "radius": 16,
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 1196,
+      "y": 836,
+      "w": 628,
+      "h": 8,
+      "color": "#f59e0b",
+      "radius": 4,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1228,
+      "y": 858,
+      "w": 570,
+      "h": 40,
+      "text": "UP NEXT · {{next_start_time}}",
+      "size": 28,
+      "color": "#fbbf24",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1228,
+      "y": 902,
+      "w": 570,
+      "h": 76,
+      "text": "{{next_show}}",
+      "size": 48,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5
+        }
+      }
+    }
+  ]
+}

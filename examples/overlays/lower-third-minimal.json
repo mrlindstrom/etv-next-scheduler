@@ -1,0 +1,79 @@
+{
+  "category": "Lower thirds",
+  "name": "Minimal line",
+  "description": "No box — a thin line draws across and the title slides up over it.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 60,
+    "showSeconds": 8
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 120,
+      "y": 960,
+      "w": 700,
+      "h": 4,
+      "color": "#ffffff",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.6
+        },
+        "out": {
+          "type": "wipe_right",
+          "duration": 0.5,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 120,
+      "y": 880,
+      "w": 1000,
+      "h": 72,
+      "text": "{{show}}",
+      "size": 60,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.5,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 120,
+      "y": 972,
+      "w": 1000,
+      "h": 46,
+      "text": "{{episode_code}}  {{title}}",
+      "size": 32,
+      "color": "#e5e7eb",
+      "font": "Segoe UI",
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.55
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3
+        }
+      }
+    }
+  ]
+}

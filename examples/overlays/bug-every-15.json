@@ -1,0 +1,59 @@
+{
+  "category": "Bugs",
+  "name": "Channel name — every 15 minutes",
+  "description": "The channel's name pops up for 10 seconds every quarter hour.",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 15,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 1480,
+      "y": 940,
+      "w": 360,
+      "h": 70,
+      "color": "#000000",
+      "radius": 35,
+      "opacity": 60,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1480,
+      "y": 940,
+      "w": 360,
+      "h": 70,
+      "text": "{{channel}}",
+      "size": 34,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    }
+  ]
+}

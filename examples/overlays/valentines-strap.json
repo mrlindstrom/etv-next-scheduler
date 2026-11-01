@@ -1,0 +1,105 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Valentine's strap",
+  "description": "Pink and red with a heart, around February 14.",
+  "season": {
+    "holiday": "valentines",
+    "before": 3,
+    "after": 0
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#9d174d",
+      "radius": 80,
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 118,
+      "y": 852,
+      "w": 136,
+      "h": 136,
+      "src": "example:heart.svg",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 860,
+      "w": 780,
+      "h": 66,
+      "text": "Happy Valentine's Day",
+      "size": 50,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "italic": true,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 932,
+      "w": 780,
+      "h": 46,
+      "text": "Up next: {{next_show}}",
+      "size": 30,
+      "color": "#fbcfe8",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.43
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    }
+  ]
+}

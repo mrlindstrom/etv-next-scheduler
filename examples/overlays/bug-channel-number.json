@@ -1,0 +1,50 @@
+{
+  "category": "Bugs",
+  "name": "Channel number bug",
+  "description": "The channel number in a rounded tile, always on.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 85,
+  "layers": [
+    {
+      "type": "box",
+      "x": 1700,
+      "y": 920,
+      "w": 130,
+      "h": 100,
+      "color": "#111827",
+      "radius": 18,
+      "opacity": 85,
+      "border": "#ffffff",
+      "borderWidth": 3,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1700,
+      "y": 920,
+      "w": 130,
+      "h": 100,
+      "text": "{{number}}",
+      "size": 52,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0.25
+        }
+      }
+    }
+  ]
+}

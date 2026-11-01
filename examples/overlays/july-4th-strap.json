@@ -1,0 +1,186 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Fourth of July strap",
+  "description": "Red, white and blue with stars, around Independence Day.",
+  "season": {
+    "holiday": "july_fourth",
+    "before": 2,
+    "after": 0
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#1e3a8a",
+      "radius": 12,
+      "opacity": 95,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 976,
+      "w": 1000,
+      "h": 12,
+      "color": "#dc2626",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 988,
+      "w": 1000,
+      "h": 12,
+      "color": "#ffffff",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.16
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.30000000000000004
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 116,
+      "y": 864,
+      "w": 54,
+      "h": 54,
+      "src": "example:star.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 176,
+      "y": 900,
+      "w": 40,
+      "h": 40,
+      "src": "example:star.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.33
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 132,
+      "y": 924,
+      "w": 34,
+      "h": 34,
+      "src": "example:star.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.41000000000000003
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 250,
+      "y": 856,
+      "w": 820,
+      "h": 70,
+      "text": "Happy Fourth of July!",
+      "size": 52,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 250,
+      "y": 928,
+      "w": 820,
+      "h": 44,
+      "text": "Celebrate with {{channel}} — next: {{next_show}}",
+      "size": 28,
+      "color": "#dbeafe",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    }
+  ]
+}

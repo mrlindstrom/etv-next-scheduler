@@ -1,0 +1,128 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Thanksgiving strap",
+  "description": "Warm autumn colours and a maple leaf, Thanksgiving week.",
+  "season": {
+    "holiday": "thanksgiving",
+    "before": 3,
+    "after": 1
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#78350f",
+      "radius": 16,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 14,
+      "h": 160,
+      "color": "#f59e0b",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 122,
+      "y": 856,
+      "w": 128,
+      "h": 128,
+      "src": "example:leaf.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 860,
+      "w": 780,
+      "h": 66,
+      "text": "Happy Thanksgiving",
+      "size": 50,
+      "color": "#fef3c7",
+      "font": "Georgia",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 932,
+      "w": 780,
+      "h": 46,
+      "text": "Next: {{next_show}} at {{next_start_time}}",
+      "size": 30,
+      "color": "#fde68a",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    }
+  ]
+}

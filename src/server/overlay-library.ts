@@ -9,9 +9,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ConfigStore } from "./config.js";
 import { sniffImage, logoPath, isManagedLogo } from "./channel-logos.js";
-import { CHANNEL_LOGO, type Overlay, type OverlayBuildOptions } from "../overlays.js";
+import { CHANNEL_LOGO, setOverlayExamplesDir, type Overlay, type OverlayBuildOptions } from "../overlays.js";
 import type { WatermarkLocation } from "../model.js";
 
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
@@ -30,6 +31,8 @@ export function overlayLibrary(store: ConfigStore): Overlay[] {
 /** What a build of this channel needs to draw its overlays. */
 export function overlayOptionsFor(store: ConfigStore, channelName: string, root: string): OverlayBuildOptions {
   const meta = store.channelMeta(channelName);
+  const nc = store.getNextConfig();
+  const ff = nc.ffmpegPath ? abs(root, nc.ffmpegPath) : join(root, "bin", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
   return {
     library: overlayLibrary(store),
     channel: meta?.overlays ?? [],
@@ -37,6 +40,9 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
     cacheDir: overlayCacheDir(store, root),
     channelName: meta?.name ?? channelName,
     channelNumber: meta?.number ?? "",
+    examplesDir: overlayExamplesDir(root),
+    ffmpeg: existsSync(ff) ? ff : (nc.ffmpegPath || "ffmpeg"),
+    output: { w: nc.video?.width || 1920, h: nc.video?.height || 1080 },
     channelLogo: meta?.logo && isManagedLogo(meta.logo) ? logoPath(join(abs(root, store.getNextConfig().runtimeDir), "logos"), meta.logo) ?? undefined : undefined,
   };
 }
@@ -79,6 +85,16 @@ export function pruneOverlayCache(dir: string, days = 14): number {
   }
   return n;
 }
+
+/** The shipped example overlays and their artwork (examples/overlays). */
+// They ship with the code (dist/server/ -> ../../examples), so find them from here,
+// falling back to the data root.
+export const overlayExamplesDir = (root: string) => {
+  const fromCode = fileURLToPath(new URL("../../examples/overlays/assets", import.meta.url));
+  const d = existsSync(fromCode) ? fromCode : join(root, "examples", "overlays", "assets");
+  setOverlayExamplesDir(d);
+  return d;
+};
 
 export const newOverlayId = () => `ov-${randomUUID().slice(0, 8)}`;
 

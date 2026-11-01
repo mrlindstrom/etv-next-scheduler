@@ -1,0 +1,107 @@
+{
+  "category": "Title cards",
+  "name": "Now playing tag",
+  "description": "A small \"now playing\" tag at the top left every 10 minutes.",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 10,
+    "showSeconds": 8,
+    "offsetSeconds": 120
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 80,
+      "y": 70,
+      "w": 620,
+      "h": 92,
+      "color": "#111827",
+      "radius": 14,
+      "opacity": 88,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 96,
+      "y": 82,
+      "w": 68,
+      "h": 68,
+      "src": "example:tv.svg",
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.07,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 182,
+      "y": 78,
+      "w": 500,
+      "h": 34,
+      "text": "NOW PLAYING",
+      "size": 24,
+      "color": "#60a5fa",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.14,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 182,
+      "y": 110,
+      "w": 500,
+      "h": 46,
+      "text": "{{show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.21000000000000002,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "category": "Up next",
+  "name": "Up next — top banner",
+  "description": "A slim banner that slides down from the top of the screen.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 60,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 84,
+      "color": "#0b1220",
+      "opacity": 88,
+      "anim": {
+        "in": {
+          "type": "fly_down",
+          "duration": 0.45,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_down",
+          "duration": 0.4,
+          "delay": 0.1
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 84,
+      "text": "UP NEXT AT {{next_start_time}}  ·  {{next_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    }
+  ]
+}

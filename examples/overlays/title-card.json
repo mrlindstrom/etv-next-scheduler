@@ -1,0 +1,62 @@
+{
+  "category": "Title cards",
+  "name": "Show title card",
+  "description": "A big centred title as each show starts; the episode types itself out.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 3,
+    "showSeconds": 6
+  },
+  "layers": [
+    {
+      "type": "text",
+      "x": 160,
+      "y": 390,
+      "w": 1600,
+      "h": 150,
+      "text": "{{show}}",
+      "size": 118,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "zoom",
+          "duration": 0.7
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.5
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 550,
+      "w": 1600,
+      "h": 70,
+      "text": "{{episode_code}}  {{title}}",
+      "size": 46,
+      "color": "#f1f5f9",
+      "font": "Segoe UI",
+      "align": "center",
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 1.2,
+          "delay": 0.6,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.4
+        }
+      }
+    }
+  ]
+}

@@ -2,12 +2,12 @@
 // get), preview up-next cards for any channel and time, and check the system
 // (versions, settings, which hardware encoders work).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, type CardPreview, type CardSlot, type ChannelSummary, type HwTestResult, type ProbeSummary, type SearchItem, type TestRequest, type TestRun, type TroubleSystem } from "../api.js";
+import { api, type Overlay, type OverlayMoment, type CardPreview, type CardSlot, type ChannelSummary, type HwTestResult, type ProbeSummary, type SearchItem, type TestRequest, type TestRun, type TroubleSystem } from "../api.js";
 import { navigate } from "../nav.js";
 import { LiveViewer } from "./LiveViewer.js";
 
-type Tab = "live" | "play" | "cards" | "system";
-const TABS: [Tab, string][] = [["live", "Watch live"], ["play", "Playback test"], ["cards", "Up-next cards"], ["system", "System"]];
+type Tab = "live" | "play" | "cards" | "overlays" | "system";
+const TABS: [Tab, string][] = [["live", "Watch live"], ["play", "Playback test"], ["cards", "Up-next cards"], ["overlays", "Overlays"], ["system", "System"]];
 const ACCELS: [string, string][] = [["default", "Streaming setting"], ["none", "Software (none)"], ["qsv", "Intel Quick Sync"], ["cuda", "NVIDIA (NVENC)"], ["amf", "AMD (AMF)"], ["vaapi", "VAAPI (Linux)"], ["videotoolbox", "VideoToolbox (macOS)"], ["vulkan", "Vulkan"]];
 const param = (k: string) => new URLSearchParams(window.location.search).get(k) ?? "";
 const fmtDur = (ms: number) => { const s = Math.round(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}:${String(m).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`; };
@@ -35,6 +35,7 @@ export function Troubleshoot() {
       {tab === "live" && <LiveViewer channels={channels} />}
       {tab === "play" && <PlaybackTest channels={channels} />}
       {tab === "cards" && <CardTester channels={channels} />}
+      {tab === "overlays" && <OverlayTester channels={channels} />}
       {tab === "system" && <SystemInfo />}
     </div>
   );
@@ -504,5 +505,81 @@ function SystemInfo() {
         )}
       </div>
     </>
+  );
+}
+
+// ---- overlays: play the moment an overlay appears on a channel ------------------
+function OverlayTester({ channels }: { channels: ChannelSummary[] }) {
+  const [overlays, setOverlays] = useState<Overlay[]>([]);
+  const [overlay, setOverlay] = useState(param("overlay"));
+  const [channel, setChannel] = useState(param("channel"));
+  const [moments, setMoments] = useState<OverlayMoment[] | null>(null);
+  const [note, setNote] = useState("");
+  const [lead, setLead] = useState(4);
+  const t = useTestRun();
+  useEffect(() => { api.overlays().then((r) => setOverlays(r.overlays)).catch(() => {}); }, []);
+  // channels showing the chosen overlay (or any overlay)
+  const withOverlays = channels.filter((c) => (c.meta?.overlays ?? []).length && (!overlay || c.meta!.overlays.includes(overlay)));
+  useEffect(() => { if (!channel && withOverlays.length) setChannel(withOverlays[0].name); }, [overlay, channels.length]);
+  const load = () => {
+    if (!channel) return;
+    setMoments(null); setNote("");
+    api.overlayMoments(channel, overlay || undefined).then((r) => { setMoments(r.moments); setNote(r.note ?? ""); }).catch((e) => setNote(String(e)));
+  };
+  useEffect(load, [channel, overlay]);
+  const byId = new Map(overlays.map((o) => [o.id, o]));
+  const name = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") ?? "";
+  const play = (m: OverlayMoment) => {
+    const o = byId.get(m.overlay);
+    const show = o?.timing?.mode === "always" ? 8 : (o?.timing?.showSeconds ?? 10);
+    t.start({ kind: "playout", channel, file: m.file, itemId: m.itemId, startSec: Math.max(0, (m.at - m.itemStart) / 1000 - lead), durationSec: Math.min(120, Math.max(15, show + lead + 4)) });
+  };
+  return (
+    <div>
+      <div className="card">
+        <div className="card-head"><h2>1. Pick an overlay and a channel</h2></div>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <label>Overlay
+            <select value={overlay} onChange={(e) => { setOverlay(e.target.value); setChannel(""); }}>
+              <option value="">Any overlay</option>
+              {overlays.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </label>
+          <label>Channel
+            <select value={channel} onChange={(e) => setChannel(e.target.value)}>
+              {!withOverlays.length && <option value="">No channel shows {overlay ? "this overlay" : "overlays"} yet</option>}
+              {withOverlays.map((c) => <option key={c.name} value={c.name}>{c.meta!.number} · {c.name}</option>)}
+            </select>
+          </label>
+          <label>Start this many seconds before it appears<input type="number" min={0} max={60} value={lead} onChange={(e) => setLead(Number(e.target.value))} style={{ width: 90 }} /></label>
+        </div>
+        {!withOverlays.length && <p className="muted" style={{ fontSize: 13 }}>Put the overlay on a channel (Overlays page → Show on channels, or the channel's settings), then build the channel.</p>}
+      </div>
+
+      <div className="card">
+        <div className="card-head"><h2>2. Pick a moment it appears</h2><button onClick={load} disabled={!channel}>Refresh</button></div>
+        <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>From the channel's built playout: the real show, with the overlay exactly as viewers will get it. A test plays that item through a separate ErsatzTV next, starting a few seconds before the overlay comes on, so you see it animate in.</p>
+        {note && <p className="muted">{note}</p>}
+        {moments === null && channel && !note && <p className="muted">Looking through the playout…</p>}
+        {moments && moments.length === 0 && !note && <p className="muted">It doesn't appear in what's built for this channel{overlay ? "" : " (no overlays found)"}. Holiday overlays only appear around their holiday; check "When it shows".</p>}
+        {moments && moments.length > 0 && (
+          <table className="ts-table">
+            <thead><tr><th>When</th><th>Overlay</th><th>During</th><th /></tr></thead>
+            <tbody>
+              {moments.map((m) => (
+                <tr key={`${m.file}|${m.itemId}|${m.overlay}`}>
+                  <td>{fmtClock(m.at)} <span className="muted">· {m.at <= Date.now() ? "now" : `in ${fmtDur(m.at - Date.now())}`}</span></td>
+                  <td>{byId.get(m.overlay)?.name ?? m.overlay}</td>
+                  <td>{name(m.path)}{m.filler && <span className="muted"> (filler)</span>}</td>
+                  <td><button className="primary" disabled={t.busy} onClick={() => play(m)}>Test this</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {t.err && <p className="err">{t.err}</p>}
+      {t.run && <RunView run={t.run} onStop={t.stop} />}
+    </div>
   );
 }

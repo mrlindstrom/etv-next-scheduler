@@ -1,0 +1,105 @@
+{
+  "category": "Lower thirds",
+  "name": "Bold tag",
+  "description": "A red NOW tag with a dark bar for the show — sporty.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 30,
+    "showSeconds": 8
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 880,
+      "w": 170,
+      "h": 96,
+      "color": "#dc2626",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.35,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.3,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 96,
+      "y": 880,
+      "w": 170,
+      "h": 96,
+      "text": "NOW",
+      "size": 46,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.2
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 266,
+      "y": 880,
+      "w": 900,
+      "h": 96,
+      "color": "#111827",
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.35,
+          "delay": 0.1
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 296,
+      "y": 880,
+      "w": 850,
+      "h": 96,
+      "text": "{{show}}",
+      "size": 50,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "upper": true,
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.4,
+          "delay": 0.45,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.2
+        }
+      }
+    }
+  ]
+}

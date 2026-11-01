@@ -1,0 +1,52 @@
+{
+  "category": "Holidays",
+  "name": "Christmas snowflake bug",
+  "description": "A snowflake by the channel number, all December.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 85,
+  "season": {
+    "holiday": "christmas",
+    "before": 24,
+    "after": 1
+  },
+  "layers": [
+    {
+      "type": "image",
+      "x": 1680,
+      "y": 910,
+      "w": 90,
+      "h": 90,
+      "src": "example:snowflake.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.6
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1764,
+      "y": 910,
+      "w": 110,
+      "h": 90,
+      "text": "{{number}}",
+      "size": 50,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "valign": "middle",
+      "outlineWidth": 3,
+      "outline": "#14532d",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    }
+  ]
+}

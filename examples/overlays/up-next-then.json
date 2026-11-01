@@ -1,0 +1,155 @@
+{
+  "category": "Up next",
+  "name": "Coming up / Then",
+  "description": "What's on now and next, stacked — near the end of each show.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 90,
+    "showSeconds": 12
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 820,
+      "w": 820,
+      "h": 180,
+      "color": "#1e293b",
+      "radius": 14,
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 820,
+      "w": 180,
+      "h": 180,
+      "color": "#2563eb",
+      "radius": 14,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 96,
+      "y": 840,
+      "w": 180,
+      "h": 140,
+      "text": "COMING\nUP",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 304,
+      "y": 838,
+      "w": 590,
+      "h": 64,
+      "text": "{{next_show}}",
+      "size": 48,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 304,
+      "y": 906,
+      "w": 590,
+      "h": 40,
+      "text": "at {{next_start_time}}",
+      "size": 30,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.5,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.08
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 304,
+      "y": 950,
+      "w": 590,
+      "h": 36,
+      "text": "Stay tuned on {{channel}}",
+      "size": 24,
+      "color": "#94a3b8",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.6000000000000001,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.12
+        }
+      }
+    }
+  ]
+}

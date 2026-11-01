@@ -1,0 +1,123 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Easter strap",
+  "description": "Soft pastels with a decorated egg, Easter weekend.",
+  "season": {
+    "holiday": "easter",
+    "before": 2,
+    "after": 1
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#f5f3ff",
+      "radius": 24,
+      "opacity": 95,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 10,
+      "color": "#f9a8d4",
+      "radius": 4,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.06
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 120,
+      "y": 846,
+      "w": 120,
+      "h": 150,
+      "src": "example:egg.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.12
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 262,
+      "y": 860,
+      "w": 800,
+      "h": 66,
+      "text": "Happy Easter!",
+      "size": 52,
+      "color": "#6d28d9",
+      "font": "Georgia",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.18
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 262,
+      "y": 932,
+      "w": 800,
+      "h": 46,
+      "text": "Up next: {{next_show}} at {{next_start_time}}",
+      "size": 30,
+      "color": "#7c3aed",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.24
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

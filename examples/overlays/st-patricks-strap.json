@@ -1,0 +1,129 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "St. Patrick's strap",
+  "description": "Green with a shamrock, around March 17.",
+  "season": {
+    "holiday": "st_patricks",
+    "before": 2,
+    "after": 0
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#166534",
+      "radius": 16,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 990,
+      "w": 1000,
+      "h": 10,
+      "color": "#facc15",
+      "radius": 4,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 116,
+      "y": 850,
+      "w": 140,
+      "h": 140,
+      "src": "example:shamrock.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 860,
+      "w": 780,
+      "h": 66,
+      "text": "Happy St. Patrick's Day",
+      "size": 50,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 272,
+      "y": 932,
+      "w": 780,
+      "h": 46,
+      "text": "Next on {{channel}}: {{next_show}}",
+      "size": 30,
+      "color": "#dcfce7",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    }
+  ]
+}

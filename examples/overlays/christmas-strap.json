@@ -1,0 +1,169 @@
+{
+  "category": "Holidays",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 30,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "name": "Christmas strap",
+  "description": "\"Merry Christmas\" with a tree and snowflakes, every half hour from Dec 1.",
+  "season": {
+    "holiday": "christmas",
+    "before": 24,
+    "after": 1
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 160,
+      "color": "#14532d",
+      "radius": 16,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 840,
+      "w": 1000,
+      "h": 10,
+      "color": "#dc2626",
+      "radius": 4,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.08
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 110,
+      "y": 850,
+      "w": 140,
+      "h": 140,
+      "src": "example:tree.svg",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 262,
+      "y": 862,
+      "w": 700,
+      "h": 62,
+      "text": "Merry Christmas from {{channel}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 262,
+      "y": 930,
+      "w": 800,
+      "h": 46,
+      "text": "Up next: {{next_show}} at {{next_start_time}}",
+      "size": 30,
+      "color": "#fde68a",
+      "font": "Segoe UI",
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.04
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 1012,
+      "y": 852,
+      "w": 64,
+      "h": 64,
+      "src": "example:snowflake.svg",
+      "opacity": 85,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.33
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 1030,
+      "y": 932,
+      "w": 40,
+      "h": 40,
+      "src": "example:snowflake.svg",
+      "opacity": 60,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.41000000000000003
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}
