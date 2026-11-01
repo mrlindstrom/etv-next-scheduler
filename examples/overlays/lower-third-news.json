@@ -26,7 +26,7 @@
         "out": {
           "type": "wipe_left",
           "duration": 0.4,
-          "delay": 0.2
+          "delay": 0.26
         }
       }
     },
@@ -46,7 +46,7 @@
         "out": {
           "type": "wipe_left",
           "duration": 0.4,
-          "delay": 0.25
+          "delay": 0.2
         }
       }
     },

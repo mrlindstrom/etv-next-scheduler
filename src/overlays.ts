@@ -159,19 +159,37 @@ export function assetPath(src: string, assetsDir: string, channelLogo?: string):
 }
 
 /** Greedy word wrap by an average-glyph estimate (text has no layout engine in SVG). */
-function wrap(text: string, width: number, size: number, bold: boolean): string[] {
+function wrap(text: string, width: number, size: number, bold: boolean, font = "Arial", italic = false): string[] {
+  // measured with the real font when the rasterizer is loaded (it is during builds
+  // and renders); otherwise an average-glyph estimate
   const per = Math.max(1, Math.floor(width / (size * (bold ? 0.58 : 0.53))));
+  const fits = (t: string) => { const w = textWidth(t, font, size, bold, italic); return w == null ? t.length <= per : w <= width; };
   const out: string[] = [];
   for (const para of text.split(/\r?\n/)) {
     let line = "";
     for (const word of para.split(/\s+/).filter(Boolean)) {
       if (!line) line = word;
-      else if ((line + " " + word).length <= per) line += " " + word;
+      else if (fits(line + " " + word)) line += " " + word;
       else { out.push(line); line = word; }
     }
     out.push(line);
   }
   return out;
+}
+
+const widths = new Map<string, number>();
+/** A line of text's drawn width in artboard pixels (null until the rasterizer is loaded). */
+function textWidth(t: string, font: string, size: number, bold: boolean, italic: boolean): number | null {
+  if (!Resvg) return null;
+  const key = `${font}|${size}|${bold}|${italic}|${t}`;
+  const have = widths.get(key);
+  if (have != null) return have;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(size * (t.length + 2))}" height="${Math.ceil(size * 2)}"><text x="0" y="${size}" font-family="${esc(font)}, Arial, sans-serif" font-size="${size}" font-weight="${bold ? 700 : 400}" font-style="${italic ? "italic" : "normal"}">${esc(t)}</text></svg>`;
+  let w = 0;
+  try { const b = new Resvg(svg, { font: fontOptions(svg) }).getBBox(); w = b ? b.x + b.width : 0; } catch { return null; }
+  if (widths.size > 20000) widths.clear();
+  widths.set(key, w);
+  return w;
 }
 
 /** The still layers' bounding box on the artboard (null if there are none). */
@@ -209,7 +227,7 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string) 
       const size = Math.max(4, num(l.size, 48)), bold = !!l.bold;
       let text = fillTemplate(l.text, v);
       if (l.upper) text = text.toUpperCase();
-      let lines = wrap(text, l.w, size, bold).filter((s, k, a) => s || a.length === 1);
+      let lines = wrap(text, l.w, size, bold, l.font || "Arial", !!l.italic).filter((s, k, a) => s || a.length === 1);
       if (!lines.join("").trim()) return;
       const lh = size * 1.18;
       const block = lines.length * lh;
@@ -251,12 +269,18 @@ async function resvg(): Promise<any | null> {
 export async function rasterize(svg: string): Promise<Buffer | null> {
   const R = await resvg();
   if (!R) return null;
-  // loading every system font costs ~150 ms a drawing; hand over just the families used
+  return Buffer.from(new R(svg, { font: fontOptions(svg), background: "rgba(0,0,0,0)" }).render().asPng());
+}
+/** Font options for one drawing: loading every system font costs ~150 ms a
+ *  drawing, so hand over just the families it uses. */
+function fontOptions(svg: string) {
   const idx = fontIndex();
   const files = new Set(FONT_CANDIDATES.filter((f) => existsSync(f)));
   for (const m of svg.matchAll(/font-family="([^"]+)"/g)) for (const fam of m[1].split(",")) for (const file of idx.get(fam.trim().replace(/^['"]|['"]$/g, "").toLowerCase()) ?? []) files.add(file);
-  return Buffer.from(new R(svg, { font: { loadSystemFonts: false, fontFiles: [...files], defaultFontFamily: "Arial" }, background: "rgba(0,0,0,0)" }).render().asPng());
+  return { loadSystemFonts: false, fontFiles: [...files], defaultFontFamily: "Arial" };
 }
+/** Load the rasterizer (so text is wrapped by its measured width). */
+export const loadRasterizer = () => resvg();
 
 // ---- system font index (family name -> font files), built once per process ----
 let FONTS: Map<string, string[]> | null = null;
@@ -565,6 +589,7 @@ export async function applyOverlays(
 ): Promise<OverlayResult> {
   const out: OverlayResult = { items: 0, rendered: 0, problems: [] };
   if (!refs.size) return out;
+  await resvg();
   const lib = new Map<string, Overlay>();
   for (const o of opts.library) { lib.set(o.id, o); if (!lib.has(o.name.toLowerCase())) lib.set(o.name.toLowerCase(), o); }
   const find = (ref: string): Overlay | null => lib.get(ref) ?? lib.get(ref.toLowerCase()) ?? (IMAGE_FILE.test(ref) && existsSync(ref) ? adHocOverlay(ref) : null);

@@ -37,7 +37,7 @@ import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
 import { SqliteResolver } from "../sqlite-resolver.js";
 import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES } from "./overlay-library.js";
-import { OVERLAY_FIELDS, sampleVars, overlaySvg, rasterize, assetPath, fillTemplate, type Overlay } from "../overlays.js";
+import { OVERLAY_FIELDS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
 import { compareChannelNumbers } from "../channel-numbers.js";
@@ -895,6 +895,7 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (!body.overlay?.layers) { reply.code(400); return { error: "Send the overlay to render." }; }
     const dir = overlayAssetsDir(store, ROOT);
     const vars = { ...sampleVars(), ...(body.vars ?? {}) };
+    await loadRasterizer(); // so text wraps by its measured width
     const s = overlaySvg(body.overlay, vars, (src) => {
       try { const p = assetPath(src, dir); if (!p) return null; const b = readFileSync(p); return { data: b.toString("base64"), mime: logoContentType(p) }; } catch { return null; }
     });

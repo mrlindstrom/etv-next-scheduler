@@ -127,20 +127,24 @@ export const ANIM_STYLES: { id: AnimStyle; label: string; desc: string }[] = [
 ];
 export function applyAnimStyle<T extends Geo>(layers: T[], style: AnimStyle): T[] {
   let box = 0, txt = 0, img = 0;
+  const boxes = layers.filter((l) => l.type === "box").length;
   return layers.map((l) => {
     const k = l.type === "box" ? box++ : l.type === "text" ? txt++ : img++;
+    // boxes go out in reverse: accents on top first, the background box last, so an
+    // accent bar never sticks out past the box it sits on
+    const outK = boxes - 1 - k;
     let anim: LayerAnim | undefined;
     switch (style) {
       case "broadcast":
         anim = l.type === "box"
-          ? { in: { type: "wipe_left", duration: 0.5, delay: k * 0.08 }, out: { type: "wipe_left", duration: 0.4, delay: 0.2 + k * 0.05 } }
+          ? { in: { type: "wipe_left", duration: 0.5, delay: k * 0.08 }, out: { type: "wipe_left", duration: 0.4, delay: 0.2 + outK * 0.06 } }
           : l.type === "text"
             ? { in: { type: "slide_up", duration: 0.45, delay: 0.3 + k * 0.1, ease: "snappy" }, out: { type: "fade", duration: 0.25, delay: k * 0.04 } }
             : { in: { type: "pop", duration: 0.5, delay: 0.25 + k * 0.08 }, out: { type: "fade", duration: 0.25 } };
         break;
       case "expand":
         anim = l.type === "box"
-          ? { in: { type: "expand", duration: 0.5, delay: k * 0.06 }, out: { type: "expand", duration: 0.4, delay: 0.15 } }
+          ? { in: { type: "expand", duration: 0.5, delay: k * 0.06 }, out: { type: "expand", duration: 0.4, delay: 0.15 + outK * 0.06 } }
           : { in: { type: "fade", duration: 0.4, delay: 0.35 + k * 0.08 }, out: { type: "fade", duration: 0.2 } };
         break;
       case "slide": { const i = box + txt + img - 1; anim = { in: { type: "slide_left", duration: 0.45, delay: i * 0.07, ease: "snappy" }, out: { type: "slide_left", duration: 0.35, delay: 0 } }; break; }

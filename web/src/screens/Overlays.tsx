@@ -112,7 +112,13 @@ export function Overlays() {
   const [error, setError] = useState("");
   const [picking, setPicking] = useState(false);
   const [examples, setExamples] = useState<Overlay[]>([]);
-  useEffect(() => { if (picking && !examples.length) api.overlayExamples().then(setExamples).catch(() => {}); }, [picking]);
+  const [exErr, setExErr] = useState("");
+  useEffect(() => {
+    api.overlayExamples().then((x) => { if (Array.isArray(x)) { setExamples(x); setExErr(x.length ? "" : "No examples were found in the examples/overlays folder."); } else throw new Error(); })
+      .catch(() => setExErr("The examples didn't load — the scheduler is probably still running the code from before the update. Close and start the scheduler again, then refresh this page."));
+  }, []);
+  // an empty library opens straight onto the examples
+  const showGallery = picking || (list !== null && list.length === 0);
   const sample = Object.fromEntries(fields.map((f) => [f.key, f.sample]));
   const ORDER = ["Lower thirds", "Up next", "Bugs", "Title cards", "Holidays"];
   const groups = [...new Set(examples.map((e) => e.category || "More"))].sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99));
@@ -139,16 +145,16 @@ export function Overlays() {
         <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
       </div>
       {error && <p className="err">{error}</p>}
-      {picking && (
+      {showGallery && (
         <div className="meta-card ov-presets">
-          <div className="pane-head"><b>Start from…</b><button className="ghost" onClick={() => setPicking(false)}>Cancel</button></div>
+          <div className="pane-head"><b>{list?.length ? "Start from…" : "No overlays yet — start from one of these"}</b>{picking && !!list?.length && <button className="ghost" onClick={() => setPicking(false)}>Cancel</button>}</div>
           <p className="muted" style={{ margin: "2px 0 10px", fontSize: 13 }}>Every example is animated and fills in each show's details. Pick one and make it yours — colours, words, timing — or start blank.</p>
           <div className="ov-preset-grid">
             <button className="ov-preset" onClick={() => { setPicking(false); setEditing({ id: "", ...PRESETS[0].make() }); }}>
               <b>Blank</b><span className="muted">Start from nothing</span>
             </button>
           </div>
-          {!examples.length && <p className="muted">Loading examples…</p>}
+          {!examples.length && (exErr ? <p className="err">{exErr}</p> : <p className="muted">Loading examples…</p>)}
           {groups.map((g) => (
             <div key={g}>
               <div className="ov-group-head">{g}</div>
@@ -165,12 +171,7 @@ export function Overlays() {
         </div>
       )}
       {!list ? <p className="muted">Loading…</p> : list.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">◩</div>
-          <h2>No overlays yet</h2>
-          <p className="muted">Make a lower third, a corner bug or an "up next" strap. Coming from ErsatzTV legacy? Its channel watermarks come over from <a href="#" onClick={(e) => { e.preventDefault(); navigate("channels"); }}>Channels → Import…</a>.</p>
-          <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
-        </div>
+        <p className="muted" style={{ fontSize: 13 }}>Coming from ErsatzTV legacy? Its channel watermarks come over from <a href="#" onClick={(e) => { e.preventDefault(); navigate("channels"); }}>Channels → Import…</a>.</p>
       ) : (
         <div className="ov-cards">
           {list.map((o) => (
@@ -644,7 +645,8 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
 
 // ---- layer rendering + properties -----------------------------------------------
 function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: number; vars: Record<string, string>; inner?: boolean; chars?: number }) {
-  const pos: React.CSSProperties = inner ? { position: "absolute", inset: 0 } : { position: "absolute", left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale };
+  // explicit width / height: images and videos ignore inset:0 and show at their own pixel size
+  const pos: React.CSSProperties = inner ? { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" } : { position: "absolute", left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale };
   const op = l.opacity != null && l.opacity < 100 ? l.opacity / 100 : undefined;
   if (l.type === "box") return <div style={{ ...pos, background: l.color || "#000", borderRadius: (l.radius ?? 0) * scale, opacity: op, border: l.borderWidth ? `${l.borderWidth * scale}px solid ${l.border || "#fff"}` : undefined, boxSizing: "border-box" }} />;
   if (l.type === "image") return <img src={overlayAssetSrc(l.src)} draggable={false} alt="" style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
