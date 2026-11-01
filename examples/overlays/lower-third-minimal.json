@@ -37,6 +37,7 @@
       "size": 60,
       "color": "#ffffff",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "shadow": true,
       "anim": {
@@ -62,6 +63,7 @@
       "size": 32,
       "color": "#e5e7eb",
       "font": "Segoe UI",
+      "fit": true,
       "shadow": true,
       "anim": {
         "in": {

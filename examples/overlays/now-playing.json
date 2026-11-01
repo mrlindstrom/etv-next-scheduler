@@ -63,6 +63,7 @@
       "size": 24,
       "color": "#60a5fa",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "anim": {
         "in": {
@@ -88,6 +89,7 @@
       "size": 36,
       "color": "#ffffff",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "anim": {
         "in": {

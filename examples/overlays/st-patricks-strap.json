@@ -86,6 +86,7 @@
       "size": 50,
       "color": "#ffffff",
       "font": "Georgia",
+      "fit": true,
       "bold": true,
       "anim": {
         "in": {
@@ -111,6 +112,7 @@
       "size": 30,
       "color": "#dcfce7",
       "font": "Segoe UI",
+      "fit": true,
       "anim": {
         "in": {
           "type": "slide_up",

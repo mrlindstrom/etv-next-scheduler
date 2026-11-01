@@ -644,6 +644,14 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
 }
 
 // ---- layer rendering + properties -----------------------------------------------
+let measureCtx: CanvasRenderingContext2D | null = null;
+/** A line's width in artboard pixels with the browser's font. */
+function measure(t: string, font: string, size: number, bold: boolean, italic: boolean): number {
+  measureCtx ??= document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return 0;
+  measureCtx.font = `${italic ? "italic " : ""}${bold ? 700 : 400} ${size}px ${font}, Arial, sans-serif`;
+  return measureCtx.measureText(t).width;
+}
 function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: number; vars: Record<string, string>; inner?: boolean; chars?: number }) {
   // explicit width / height: images and videos ignore inset:0 and show at their own pixel size
   const pos: React.CSSProperties = inner ? { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" } : { position: "absolute", left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale };
@@ -651,15 +659,20 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
   if (l.type === "box") return <div style={{ ...pos, background: l.color || "#000", borderRadius: (l.radius ?? 0) * scale, opacity: op, border: l.borderWidth ? `${l.borderWidth * scale}px solid ${l.border || "#fff"}` : undefined, boxSizing: "border-box" }} />;
   if (l.type === "image") return <img src={overlayAssetSrc(l.src)} draggable={false} alt="" style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
   if (l.type === "video") return <video src={overlayAssetSrc(l.src)} muted loop autoPlay playsInline style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
-  const size = (l.size ?? 48) * scale;
   let text = fill(l.text ?? "", vars);
   if (l.upper) text = text.toUpperCase();
+  let base = l.size ?? 48;
+  if (l.fit) { // shrink to fit: one line, smaller only when it's too wide (as builds do)
+    const w = Math.max(...text.split(/\r?\n/).map((ln) => measure(ln, l.font || "Arial", base, !!l.bold, !!l.italic)));
+    if (w > l.w) base = Math.max(8, Math.floor(base * (l.w / w) * 0.98));
+  }
+  const size = base * scale;
   if (chars < 1) text = text.slice(0, Math.round(text.length * chars));
   return (
     <div style={{
       ...pos, display: "flex", flexDirection: "column", justifyContent: l.valign === "bottom" ? "flex-end" : l.valign === "middle" ? "center" : "flex-start",
       textAlign: l.align ?? "left", color: l.color || "#fff", fontFamily: `${l.font || "Arial"}, Arial, sans-serif`, fontSize: size, lineHeight: 1.18,
-      fontWeight: l.bold ? 700 : 400, fontStyle: l.italic ? "italic" : "normal", whiteSpace: "pre-wrap", overflowWrap: "break-word", opacity: op, pointerEvents: "none",
+      fontWeight: l.bold ? 700 : 400, fontStyle: l.italic ? "italic" : "normal", whiteSpace: l.fit ? "pre" : "pre-wrap", overflowWrap: "break-word", opacity: op, pointerEvents: "none",
       textShadow: l.shadow ? `${size / 16}px ${size / 16}px ${size / 12}px rgba(0,0,0,.75)` : undefined,
       WebkitTextStroke: l.outlineWidth ? `${l.outlineWidth * scale}px ${l.outline || "#000"}` : undefined, paintOrder: "stroke fill",
     } as React.CSSProperties}>{text}</div>
@@ -702,6 +715,7 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete 
             <label className="ov-inline"><input type="checkbox" checked={!!l.italic} onChange={(e) => set({ italic: e.target.checked })} /> Italic</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.upper} onChange={(e) => set({ upper: e.target.checked })} /> ALL CAPS</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.shadow} onChange={(e) => set({ shadow: e.target.checked })} /> Shadow</label>
+            <label className="ov-inline" title="Keep it on one line; it gets smaller when a long show name wouldn't fit"><input type="checkbox" checked={!!l.fit} onChange={(e) => set({ fit: e.target.checked })} /> Shrink to fit</label>
           </div>
           <div className="ov-grid2">
             <label>Outline<input type="color" value={l.outline || "#000000"} onChange={(e) => set({ outline: e.target.value, outlineWidth: l.outlineWidth || 3 })} /></label>

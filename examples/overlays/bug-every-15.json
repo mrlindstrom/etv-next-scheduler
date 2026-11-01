@@ -40,6 +40,7 @@
       "size": 34,
       "color": "#ffffff",
       "font": "Segoe UI",
+      "fit": true,
       "bold": true,
       "align": "center",
       "valign": "middle",

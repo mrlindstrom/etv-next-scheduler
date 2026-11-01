@@ -88,6 +88,7 @@
       "size": 48,
       "color": "#ffffff",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "anim": {
         "in": {
@@ -113,6 +114,7 @@
       "size": 30,
       "color": "#cbd5e1",
       "font": "Segoe UI",
+      "fit": true,
       "anim": {
         "in": {
           "type": "slide_up",
@@ -137,6 +139,7 @@
       "size": 24,
       "color": "#94a3b8",
       "font": "Segoe UI",
+      "fit": true,
       "anim": {
         "in": {
           "type": "slide_up",

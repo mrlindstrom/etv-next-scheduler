@@ -65,6 +65,7 @@
       "size": 50,
       "color": "#ffffff",
       "font": "Georgia",
+      "fit": true,
       "bold": true,
       "italic": true,
       "anim": {
@@ -89,6 +90,7 @@
       "size": 30,
       "color": "#fbcfe8",
       "font": "Segoe UI",
+      "fit": true,
       "anim": {
         "in": {
           "type": "fade",

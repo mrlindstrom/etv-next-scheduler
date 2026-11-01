@@ -22,7 +22,7 @@ export type { LayerAnim } from "../../src/overlay-anim.js";
 interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string })
-  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean })
+  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
   | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
   | (OvBox & { type: "video"; src: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number }
@@ -107,7 +107,7 @@ export interface TroubleSystem {
   streaming: { codec: string; accel: string; accelLabel: string; encoder: string; size: string; bitrateKbps: number; audio: string };
 }
 export interface HwTestResult { accel: string; label: string; codec: string; encoder: string; ok: boolean; ms: number; error?: string; current: boolean; }
-export interface TestRequest { kind: "item" | "upnext" | "playout"; file?: string; itemId?: string; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
+export interface TestRequest { kind: "item" | "upnext" | "playout"; file?: string; itemId?: string; forceOverlay?: string; lead?: number; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
 export interface TestRun {
   id: string; label: string; status: "starting" | "running" | "finishing" | "done" | "failed" | "stopped"; message: string; startedAt: number; finishedAt?: number;
   request: TestRequest; accel: string; encoder: string; port: number; targetSec: number; capturedSec: number; firstSegmentSec?: number; speed?: number;
@@ -250,7 +250,7 @@ export const api = {
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
   overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
   overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
-  overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string }> =>
+  overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string; outOfSeason?: { id: string; name: string; when: string }[]; programmes?: { file: string; itemId: string; itemStart: number; path: string }[] }> =>
     fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),
   saveOverlay: (o: Overlay): Promise<Overlay> => fetch("/api/overlays", opts("POST", o)).then(j),
   deleteOverlay: (id: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/${encodeURIComponent(id)}`, opts("DELETE")).then(j),

@@ -39,6 +39,7 @@
       "size": 36,
       "color": "#ffffff",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "align": "center",
       "valign": "middle",

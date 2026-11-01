@@ -516,6 +516,8 @@ function OverlayTester({ channels }: { channels: ChannelSummary[] }) {
   const [moments, setMoments] = useState<OverlayMoment[] | null>(null);
   const [note, setNote] = useState("");
   const [lead, setLead] = useState(4);
+  const [programmes, setProgrammes] = useState<{ file: string; itemId: string; itemStart: number; path: string }[]>([]);
+  const [outOfSeason, setOutOfSeason] = useState<{ id: string; name: string; when: string }[]>([]);
   const t = useTestRun();
   useEffect(() => { api.overlays().then((r) => setOverlays(r.overlays)).catch(() => {}); }, []);
   // channels showing the chosen overlay (or any overlay)
@@ -523,8 +525,8 @@ function OverlayTester({ channels }: { channels: ChannelSummary[] }) {
   useEffect(() => { if (!channel && withOverlays.length) setChannel(withOverlays[0].name); }, [overlay, channels.length]);
   const load = () => {
     if (!channel) return;
-    setMoments(null); setNote("");
-    api.overlayMoments(channel, overlay || undefined).then((r) => { setMoments(r.moments); setNote(r.note ?? ""); }).catch((e) => setNote(String(e)));
+    setMoments(null); setNote(""); setProgrammes([]); setOutOfSeason([]);
+    api.overlayMoments(channel, overlay || undefined).then((r) => { setMoments(r.moments); setNote(r.note ?? ""); setProgrammes(r.programmes ?? []); setOutOfSeason(r.outOfSeason ?? []); }).catch((e) => setNote(String(e)));
   };
   useEffect(load, [channel, overlay]);
   const byId = new Map(overlays.map((o) => [o.id, o]));
@@ -561,6 +563,28 @@ function OverlayTester({ channels }: { channels: ChannelSummary[] }) {
         <p className="muted" style={{ fontSize: 13, marginTop: 0 }}>From the channel's built playout: the real show, with the overlay exactly as viewers will get it. A test plays that item through a separate ErsatzTV next, starting a few seconds before the overlay comes on, so you see it animate in.</p>
         {note && <p className="muted">{note}</p>}
         {moments === null && channel && !note && <p className="muted">Looking through the playout…</p>}
+        {moments && moments.length === 0 && programmes.length > 0 && (() => {
+          const pid = overlay || outOfSeason[0]?.id || (channels.find((c) => c.name === channel)?.meta?.overlays ?? [])[0] || "";
+          const po = byId.get(pid);
+          const show = po?.timing?.mode === "always" || !po?.timing?.mode ? 10 : (po?.timing?.showSeconds ?? 10);
+          return (
+            <>
+              <p style={{ margin: "8px 0 4px" }}><b>Preview {po ? `"${po.name}"` : "an overlay"} on one of these shows</b> <span className="muted">— it comes on {lead} seconds in, whatever its days or timing are set to.</span></p>
+              <table className="ts-table">
+                <thead><tr><th>Starts</th><th>Show</th><th /></tr></thead>
+                <tbody>
+                  {programmes.map((p) => (
+                    <tr key={`${p.file}|${p.itemId}`}>
+                      <td>{fmtClock(p.itemStart)}</td>
+                      <td>{name(p.path)}</td>
+                      <td><button className="primary" disabled={t.busy || !pid} onClick={() => t.start({ kind: "playout", channel, file: p.file, itemId: p.itemId, startSec: 30, lead, forceOverlay: pid, durationSec: Math.min(120, Math.max(15, show + lead + 6)) })}>Preview</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          );
+        })()}
         {moments && moments.length === 0 && !note && <p className="muted">It doesn't appear in what's built for this channel{overlay ? "" : " (no overlays found)"}. Holiday overlays only appear around their holiday; check "When it shows".</p>}
         {moments && moments.length > 0 && (
           <table className="ts-table">

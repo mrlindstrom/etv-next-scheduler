@@ -36,6 +36,7 @@
       "size": 50,
       "color": "#ffffff",
       "font": "Arial Black",
+      "fit": true,
       "bold": true,
       "valign": "middle",
       "outlineWidth": 3,

@@ -30,7 +30,9 @@ import { getResolver } from "./resolverCache.js";
 import { upNextItem, type UpNextOptions } from "../engine.js";
 import { applyLanguageTracks } from "../lang.js";
 import { applyOverlays } from "../overlays.js";
-import { overlayOptionsFor } from "./overlay-library.js";
+import { overlayOptionsFor, overlayLibrary } from "./overlay-library.js";
+import { inSeason } from "../overlays.js";
+import { holidayDate } from "../holidays.js";
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 import { buildUpNextAss, DEFAULT_ASS_LAYOUT } from "../upnext-ass.js";
 import { formatRfc3339 } from "../time.js";
@@ -116,6 +118,7 @@ const encoderFor = (codec: string, accel: string) => {
 export interface TestRequest {
   kind: "item" | "upnext" | "playout";
   file?: string; itemId?: string;                    // kind "playout": a channel's built playout file + item id
+  forceOverlay?: string; lead?: number;              // kind "playout": preview this overlay on the item, `lead` s after the start point
   type?: string; id?: number; startSec?: number;   // kind "item"
   at?: number; theme?: string;                      // kind "upnext" (the card lists from `at`)
   channel?: string;    // item: whose audio/subtitle settings (and overlays) to use; upnext: the channel
@@ -275,6 +278,23 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
   });
   app.get("/api/troubleshoot/play", async () => (current ? publicRun(current.run) : null));
   // when a channel's overlays next appear, from its built playout (for the Overlays tab)
+  const HOLIDAY_NAMES: Record<string, string> = { new_years: "New Year's Day", new_years_eve: "New Year's Eve", valentines: "Valentine's Day", st_patricks: "St. Patrick's Day", july_fourth: "the Fourth of July", fourth_of_july: "the Fourth of July", mothers_day: "Mother's Day", fathers_day: "Father's Day", christmas_eve: "Christmas Eve", april_fools: "April Fools' Day" };
+  const holidayName = (h: string) => HOLIDAY_NAMES[h] ?? h.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const seasonText = (se: { holiday?: string; before?: number; after?: number; from?: string; to?: string }, now: number): string => {
+    if (se.holiday) {
+      for (const y of [new Date(now).getFullYear(), new Date(now).getFullYear() + 1]) {
+        const h = holidayDate(se.holiday, y);
+        if (!h) break;
+        const at = Date.UTC(y, h.month - 1, h.day);
+        const a = new Date(at - (se.before ?? 0) * 86_400_000), b = new Date(at + (se.after ?? 0) * 86_400_000);
+        if (b.getTime() + 86_400_000 < now) continue;
+        const d = (x: Date) => x.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+        return `around ${holidayName(se.holiday)} (${d(a)} – ${d(b)})`;
+      }
+      return `around ${holidayName(se.holiday)}`;
+    }
+    return `between ${se.from} and ${se.to} each year`;
+  };
   app.get("/api/troubleshoot/overlay-moments", async (req) => {
     const q = req.query as { channel?: string; overlay?: string };
     const channel = String(q.channel ?? "");
@@ -283,7 +303,8 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
     const now = Date.now();
     const files = (await readdir(dir)).filter((n) => n.endsWith(".json") && !n.endsWith(".labels.json")).sort();
     const moments: { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }[] = [];
-    let tagged = 0;
+    const programmes: { file: string; itemId: string; itemStart: number; path: string }[] = [];
+    let tagged = 0, builtUntil = 0;
     for (const name of files) {
       const w = parseWindowRange(name);
       if (w && w.finishMs < now) continue;
@@ -294,6 +315,8 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         const marks: { id: string; at: number }[] = labels[it.id]?.overlays ?? [];
         if (marks.length) tagged++;
         const start = Date.parse(it.start), finish = Date.parse(it.finish);
+        builtUntil = Math.max(builtUntil, finish);
+        if (!labels[it.id]?.fillerKind && finish > now + 60_000 && programmes.length < 12 && it.source?.path) programmes.push({ file: name, itemId: it.id, itemStart: start, path: it.source.path });
         for (const m of marks) {
           if (q.overlay && m.id !== q.overlay) continue;
           const at = start + m.at;
@@ -304,7 +327,25 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       if (moments.length >= 40) break;
     }
     moments.sort((a, b) => a.at - b.at);
-    return { moments: moments.slice(0, 20), note: tagged ? "" : "No overlays are in this channel's built playout yet — rebuild the channel after giving it overlays." };
+    if (moments.length) return { moments: moments.slice(0, 20), note: "" };
+    // nothing found: say why (a holiday window is the usual reason), and offer to preview it anyway
+    const tz = store.get().tz;
+    const lib = new Map(overlayLibrary(store).map((o) => [o.id, o]));
+    const ids = q.overlay ? [q.overlay] : (store.channelMeta(channel)?.overlays ?? []);
+    const outOfSeason: { id: string; name: string; when: string }[] = [];
+    for (const id of ids) {
+      const o = lib.get(id);
+      if (!o?.season) continue;
+      let any = false;
+      for (let t = now; t <= Math.max(now, builtUntil) && !any; t += 6 * 3_600_000) any = inSeason(o.season, t, tz);
+      if (!any) outOfSeason.push({ id, name: o.name, when: seasonText(o.season, now) });
+    }
+    const until = builtUntil ? new Date(builtUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+    const note = outOfSeason.length
+      ? `${outOfSeason.map((x) => `"${x.name}" only shows ${x.when}`).join("; ")}. What's built for this channel (through ${until}) is outside that, so it isn't in the playout yet — that's expected. You can still preview it on one of the shows below.`
+      : tagged ? "It doesn't appear in what's built for this channel — check its timing (\"When it shows\"). You can preview it on one of the shows below."
+      : "No overlays are in this channel's built playout yet — rebuild the channel after giving it overlays, or preview one on the shows below.";
+    return { moments: [], note, outOfSeason, programmes };
   });
   app.get("/api/troubleshoot/play/:id", async (req, reply) => {
     const r = runs.get((req.params as any).id);
@@ -388,8 +429,27 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       targetSec = Math.min(Math.max(5, Number(req.durationSec) || 30), 300, lenSec - startSec);
       const path = (src.source as any)?.path as string | undefined;
       if (path && !existsSync(path)) throw new Error(`The file isn't reachable from this machine: ${path}`);
+      if (req.forceOverlay) {
+        // preview: this one overlay on this show, whatever its holiday window, coming on a few seconds in
+        const o = overlayLibrary(store).find((x) => x.id === req.forceOverlay);
+        if (!o) throw new Error("That overlay isn't in the library any more.");
+        const lead = Math.max(0, Number(req.lead ?? 4));
+        const show = o.timing?.mode === "always" || !o.timing?.mode ? 10 : Math.max(1, Number(o.timing.showSeconds ?? 10));
+        const preview = { ...clone(o), id: "__preview", season: undefined, timing: { mode: "start" as const, offsetSeconds: startSec + lead, showSeconds: show } };
+        const s0 = Date.parse(src.start), s1 = Date.parse(src.finish);
+        const rows = await upcoming(xmltvFor(String(req.channel)), tz, s0 - 12 * 3_600_000, 600);
+        const ci = rows.reduce((k, r, i) => (r.epochMs <= s0 + 1000 ? i : k), -1);
+        const cur = ci >= 0 ? rows[ci] : undefined, nxt = rows[ci + 1];
+        const guide = [{ startMs: s0, stopMs: s1, item: { id: "0", path: path ?? "", durationMs: s1 - s0, chapters: [], title: "", showTitle: cur?.title ?? "" } as any },
+          ...(nxt ? [{ startMs: nxt.epochMs, stopMs: nxt.epochMs + 1800_000, item: { id: "1", path: "", durationMs: 1800_000, chapters: [], title: "", showTitle: nxt.title } as any }] : [])];
+        const probe: PlayoutItem = { id: "2", start: src.start, finish: src.finish, source: src.source };
+        const r = await applyOverlays([probe], new Map([["2", ["__preview"]]]), {}, guide, tz, { ...overlayOptionsFor(store, String(req.channel), root), library: [preview as any] });
+        if (!probe.graphics?.length) throw new Error(`The overlay couldn't be drawn${r.problems.length ? `: ${r.problems.join("; ")}` : ""}.`);
+        src.graphics = [...probe.graphics, ...(src.graphics ?? [])];
+        overlayNote = `previewing "${o.name}"`;
+      }
       mkItem = (t) => ({ ...clone(src), id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + lenSec * 1000, tz) });
-      label = `${req.channel} · ${path ? basename(path).replace(/\.[^.]+$/, "") : "item"}`;
+      label = `${req.channel} · ${path ? basename(path).replace(/\.[^.]+$/, "") : "item"}${overlayNote ? ` · ${overlayNote}` : ""}`;
       sourcePath = path;
     } else {
       const d = itemDetail(ctx.libDb(), String(req.type), Number(req.id));

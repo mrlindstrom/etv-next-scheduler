@@ -143,6 +143,7 @@
       "size": 52,
       "color": "#ffffff",
       "font": "Arial Black",
+      "fit": true,
       "bold": true,
       "anim": {
         "in": {
@@ -168,6 +169,7 @@
       "size": 28,
       "color": "#dbeafe",
       "font": "Segoe UI",
+      "fit": true,
       "anim": {
         "in": {
           "type": "slide_up",

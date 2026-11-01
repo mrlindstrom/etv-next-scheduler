@@ -38,6 +38,7 @@ export type OverlayLayer =
       font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean;
       align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom";
       outline?: string; outlineWidth?: number; shadow?: boolean;
+      fit?: boolean;   // shrink to fit: keep it on one line, smaller when it's too long for the box
     })
   | (Box & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
   | (Box & { type: "video"; src: string });
@@ -224,10 +225,17 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string) 
       const a = readAsset(l.src);
       if (a) el = `<image x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="xMidYMid meet" href="data:${a.mime};base64,${a.data}"${op}/>`;
     } else if (l.type === "text") {
-      const size = Math.max(4, num(l.size, 48)), bold = !!l.bold;
+      let size = Math.max(4, num(l.size, 48));
+      const bold = !!l.bold;
       let text = fillTemplate(l.text, v);
       if (l.upper) text = text.toUpperCase();
-      let lines = wrap(text, l.w, size, bold, l.font || "Arial", !!l.italic).filter((s, k, a) => s || a.length === 1);
+      let lines: string[];
+      if (l.fit) {
+        // shrink to fit: one line per paragraph, scaled down only when it's too wide
+        lines = text.split(/\r?\n/);
+        const widest = Math.max(...lines.map((ln) => textWidth(ln, l.font || "Arial", size, bold, !!l.italic) ?? ln.length * size * (bold ? 0.58 : 0.53)));
+        if (widest > l.w) size = Math.max(8, Math.floor(size * (l.w / widest) * 0.98));
+      } else lines = wrap(text, l.w, size, bold, l.font || "Arial", !!l.italic).filter((s, k, a) => s || a.length === 1);
       if (!lines.join("").trim()) return;
       const lh = size * 1.18;
       const block = lines.length * lh;

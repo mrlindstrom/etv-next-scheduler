@@ -18,6 +18,7 @@
       "size": 118,
       "color": "#ffffff",
       "font": "Arial",
+      "fit": true,
       "bold": true,
       "align": "center",
       "valign": "middle",
@@ -43,6 +44,7 @@
       "size": 46,
       "color": "#f1f5f9",
       "font": "Segoe UI",
+      "fit": true,
       "align": "center",
       "shadow": true,
       "anim": {
