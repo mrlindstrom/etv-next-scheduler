@@ -1,13 +1,14 @@
 // Weekly grid editor (Channels "grid" mode): a palette of shows, a Mon–Sun ×
 // half-hour grid you paint or drag them onto, seasonal lineups with date ranges,
 // one-off events that pre-empt the grid, and the channel's break/filler setup.
+import { OverlayPicker } from "../OverlayPicker.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api.js";
 import { SchemaForm, CollectionField } from "../SchemaForm.js";
 import { QueryBox } from "../QueryBox.js";
 
 type Source = "show" | "search" | "collection";
-interface Program { id: string; title: string; source: Source; value: string; order?: string; breaks?: "default" | "off"; color?: string }
+interface Program { id: string; title: string; source: Source; value: string; order?: string; breaks?: "default" | "off"; color?: string; overlays?: string[] }
 interface Cell { day: number; start: number; span: number; program: string }
 interface Season { id: string; name: string; from?: string; to?: string; cells: Cell[]; fallback?: string }
 interface GridEvent { id: string; name: string; dateFrom?: string; dateTo?: string; holiday?: string; days?: number; from?: string; to?: string; program: string }
@@ -356,6 +357,7 @@ function ProgramEditor({ program, taken, onSave, onCancel, onRemove }: { program
             </label>
           </div>
           <label className="switch"><input type="checkbox" checked={p.breaks !== "off"} onChange={(e) => setP({ ...p, breaks: e.target.checked ? "default" : "off" })} /> Ad breaks during this show</label>
+          <label>Overlays during this show<OverlayPicker value={p.overlays ?? []} onChange={(v) => setP({ ...p, overlays: v })} empty="Just the channel's own" /></label>
           <p className="muted" style={{ fontSize: 12, margin: 0 }}>"Next episode" picks up where the show left off, so a show stripped across weekdays plays episodes in order day to day.</p>
           <div className="actions">
             <button className="primary" onClick={save} disabled={!p.value.trim()}>{program.id ? "Save" : "Add show"}</button>

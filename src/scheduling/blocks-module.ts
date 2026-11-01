@@ -36,6 +36,7 @@ interface Block {
   fallbackCollection?: string;     // fills whatever the padding couldn't
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
   upNext?: boolean;                // up-next card after the block when it isn't padded (back-to-back)
+  overlays?: string[];             // overlays (library ids) shown during this block, on top of the channel's own
 }
 interface ScheduleConfig extends StationOptions { blocks: Block[]; }
 
@@ -93,6 +94,9 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
 
     const barrier = Number(b.align || 0);
 
+    const overlays = (b.overlays ?? []).filter(Boolean);
+    for (const o of overlays) playout.push({ op: "graphics_on", element: o });
+
     // fill mode, wrapped in an EPG group so each block becomes a guide entry.
     // For a clock-aligned count, `fitMinutes` gives each item a slot that runs to
     // the first barrier after it (a 45-min episode on a :00/:30 grid gets an
@@ -120,6 +124,7 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     // entry, so the next programme's entry starts when the card ends).
     if (b.upNext && !padded && b.fill !== "flood") playout.push({ op: "up_next", afterProgram: true });
     playout.push({ op: "epg_group", value: false });
+    for (const o of overlays) playout.push({ op: "graphics_off", element: o });
   });
 
   playout.push({ op: "repeat" });
@@ -170,6 +175,7 @@ const SCHEMA: Field[] = [
       { type: "checkbox", key: "alignFit", label: "Aligned: keep ad breaks inside each show's slot", default: true, help: "Shows of any length are aligned: a show longer than the slot takes as many as it needs (a 44-minute show fills an hour on a half-hour grid). Off = breaks aren't budgeted to the slot and can push the show past the next mark (legacy behavior)." },
       { type: "checkbox", key: "upNext", label: "Show the up-next card after this block", help: "For blocks that aren't aligned to the clock: the card plays right after the block, then the next item starts. Aligned blocks already show it at the start of their padding. Uses the channel's up-next theme (Channels page) and needs up-next cards turned on (Streaming page).", showIf: { key: "align", equals: ["0", ""] } },
       { type: "collection", key: "fallbackCollection", label: "Fallback filler collection (optional)", help: "Covers any gap the padding can't fill exactly; its last item is trimmed." },
+      { type: "overlays", key: "overlays", label: "Overlays during this block", help: "Graphics shown over this block's programmes (lower thirds, a special bug…), on top of the channel's own overlays. Make them on the Overlays page." },
     ],
   },
   ...STATION_FIELDS,

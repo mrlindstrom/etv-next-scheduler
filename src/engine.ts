@@ -10,6 +10,7 @@
 import type { MediaItem, PlayoutItem, Watermark, LocalSource, GraphicsLayer } from "./model.js";
 import type { AssLayout } from "./upnext-ass.js";
 import { PLAYOUT_VERSION, PLAYOUT_VERSION_GRAPHICS } from "./model.js";
+import type { OverlayBuildOptions } from "./overlays.js";
 import type { ContentDef, Instruction, PlayoutDoc, FillerKind } from "./yaml.js";
 import { Enumerator, PlaylistEnumerator, type ContentResolver } from "./resolver.js";
 
@@ -35,6 +36,8 @@ export interface BuildOptions {
   /** When set, emit a full-screen "coming up next" graphics-canvas card at the
    *  end of each grid-aligned break (see UpNextOptions). Omit to disable. */
   upNext?: UpNextOptions;
+  /** The overlay library and this channel's own overlays (see overlays.ts). */
+  overlays?: OverlayBuildOptions;
 }
 
 /** Config for the live "up next" graphics canvas. The card is a full-frame RGBA
@@ -92,7 +95,9 @@ export class SchedulingEngine {
   private currentShowTitle: string | undefined; // the airing program's show title (for ${show_title} bumpers)
   private currentShowYear: number | undefined;  // the airing program's year (for era-matched filler)
   private groupDepth = 0;
-  private graphicsAssets = new Map<string, string>(); // element -> resolved image path
+  // playout item id -> overlays on it (channel overlays + graphics_on/watermark_on
+  // elements); turned into graphics layers after the build (see overlays.ts)
+  private overlayRefs = new Map<string, string[]>();
   private labels: Record<string, ItemLabel> = {};
   private guide: GuideEntry[] = [];
   private groupStartMs: number | null = null;
@@ -239,6 +244,9 @@ export class SchedulingEngine {
   /** Per-item labels (content key / filler kind / type) for the preview UI. */
   getLabels(): Record<string, ItemLabel> { return this.labels; }
 
+  /** Overlays on each playout item, for applyOverlays (overlays.ts). */
+  getOverlayRefs(): Map<string, string[]> { return this.overlayRefs; }
+
   /** Subtitles-mode up-next cards awaiting an .ass file (filled after build). */
   getUpNextCards(): UpNextCard[] { return this.upNextCards; }
 
@@ -285,9 +293,9 @@ export class SchedulingEngine {
           this.groupStartMs = null; this.groupItem = null;
         }
         break;
-      case "graphics_on": this.activeGraphics.push(ins.element); await this.ensureGraphic(ins.element); break;
+      case "graphics_on": if (!this.activeGraphics.includes(ins.element)) this.activeGraphics.push(ins.element); break;
       case "graphics_off": this.activeGraphics = this.activeGraphics.filter((g) => g !== ins.element); break;
-      case "watermark_on": this.activeWatermarks.push(ins.element); await this.ensureGraphic(ins.element); break;
+      case "watermark_on": if (!this.activeWatermarks.includes(ins.element)) this.activeWatermarks.push(ins.element); break;
       case "watermark_off": this.activeWatermarks = this.activeWatermarks.filter((g) => g !== ins.element); break;
       case "pre_roll_on": this.preRoll = { content: ins.content, count: Math.max(1, ins.count ?? 1) }; break;
       case "pre_roll_off": this.preRoll = null; break;
@@ -727,8 +735,8 @@ export class SchedulingEngine {
       finish: formatRfc3339(finish, this.opts.tz),
       source: src,
     };
-    const wm = this.currentWatermark();
-    if (wm) pi.watermark = wm;
+    const overlays = [...(this.opts.overlays?.channel ?? []), ...this.activeWatermarks, ...this.activeGraphics];
+    if (overlays.length) this.overlayRefs.set(pi.id, overlays);
     this.items.push(pi);
     // Programs are classified by type alone; only interstitials need tags for
     // the preview classifier, so keep the labels sidecar lean by omitting tags
@@ -758,14 +766,6 @@ export class SchedulingEngine {
     }
   }
 
-  private currentWatermark(): Watermark | undefined {
-    // v1: map the first active watermark/graphic that resolved to an image.
-    for (const el of [...this.activeWatermarks, ...this.activeGraphics]) {
-      const path = this.graphicsAssets.get(el);
-      if (path) return { source: { source_type: "local", path }, location: "bottom_right", width_percent: 10, opacity_percent: 90 };
-    }
-    return undefined;
-  }
 
   // --- helpers ---------------------------------------------------------------
   private async enumerator(key: string): Promise<Cursor> {
@@ -835,13 +835,6 @@ export class SchedulingEngine {
     }
   }
 
-  private async ensureGraphic(element: string): Promise<void> {
-    if (this.graphicsAssets.has(element)) return;
-    if (this.resolver.resolveGraphics) {
-      const asset = await this.resolver.resolveGraphics(element);
-      if (asset && asset.kind === "image") this.graphicsAssets.set(element, asset.path);
-    }
-  }
 }
 
 // --- daypart date matching ---------------------------------------------------

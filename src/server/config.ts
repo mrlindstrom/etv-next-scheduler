@@ -53,6 +53,7 @@ export interface ChannelMeta {
   upNextText: string;   // how the card's text is rendered: "image" (PNG layers) | "subtitles" (burned ASS via libass)
   encoding: string;     // "" (default: pass remote streams through, re-encode the rest) | "transcode" | "copy" (next's copy mode)
   fallbackImage: string; // shown when there's nothing to play: "" (Streaming default) | "black" | "standby" | an image path
+  overlays: string[];    // overlay ids drawn over every programme (watermark / bug, straps…)
 }
 
 /** ErsatzTV next streaming settings, written into lineup.json + config.json. */
@@ -102,6 +103,8 @@ export interface BuildRecord {
   status: string; item_count: number | null; file: string | null; error: string | null;
 }
 
+const parseList = (s: unknown): string[] => { const v = safeJson(s); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : []; };
+
 export class ConfigStore {
   private db: DatabaseSync;
   constructor(path: string) {
@@ -124,6 +127,8 @@ export class ConfigStore {
         source_id INTEGER PRIMARY KEY, token TEXT, address TEXT);
       CREATE TABLE IF NOT EXISTS pods (
         id TEXT PRIMARY KEY, name TEXT, type TEXT, config TEXT, updated_at TEXT);
+      CREATE TABLE IF NOT EXISTS overlays (
+        id TEXT PRIMARY KEY, name TEXT, config TEXT, updated_at TEXT);
     `);
     // Migrate older DBs that predate the per-channel language columns.
     const cols = (this.db.prepare(`PRAGMA table_info(channel_meta)`).all() as any[]).map((c) => c.name);
@@ -142,6 +147,7 @@ export class ConfigStore {
     if (!cols.includes("logo_generated")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN logo_generated INTEGER DEFAULT 0`);
     if (!cols.includes("encoding")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN encoding TEXT DEFAULT ''`);
     if (!cols.includes("fallback_image")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN fallback_image TEXT DEFAULT ''`);
+    if (!cols.includes("overlays")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN overlays TEXT DEFAULT ''`);
   }
 
   // --- per-source remote credentials (token/API key; address optional override) ---
@@ -162,6 +168,19 @@ export class ConfigStore {
     return (this.db.prepare(`SELECT source_id AS sourceId, token, address FROM source_secrets`).all() as any[])
       .map((r) => ({ sourceId: Number(r.sourceId), token: r.token ?? "", address: r.address ?? null }));
   }
+
+  // --- overlays (graphics drawn over programmes; see src/overlays.ts) ---------
+  listOverlays(): any[] {
+    return (this.db.prepare(`SELECT id, name, config, updated_at FROM overlays ORDER BY name`).all() as any[])
+      .map((r) => ({ ...safeJson(r.config), id: r.id, name: r.name, updatedAt: r.updated_at }));
+  }
+  getOverlay(id: string): any | null { return this.listOverlays().find((o) => o.id === id) ?? null; }
+  saveOverlay(o: { id: string; name: string; [k: string]: unknown }): void {
+    const { id, name, updatedAt: _u, ...rest } = o as any;
+    this.db.prepare(`INSERT INTO overlays(id, name, config, updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(id) DO UPDATE SET name=excluded.name, config=excluded.config, updated_at=excluded.updated_at`).run(id, name, JSON.stringify(rest), new Date().toISOString());
+  }
+  deleteOverlay(id: string): void { this.db.prepare(`DELETE FROM overlays WHERE id=?`).run(id); }
 
   // --- pods (authoring building blocks) --------------------------------------
   listPods(): { id: string; name: string; type: string; config: any; updatedAt: string }[] {
@@ -220,7 +239,7 @@ export class ConfigStore {
   // --- channel registry (metadata for the ErsatzTV next lineup) --------------
   channelMetas(): ChannelMeta[] {
     return (this.db.prepare(`SELECT * FROM channel_meta ORDER BY sort, number, name`).all() as any[])
-      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", fallbackImage: r.fallback_image ?? "" }));
+      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", fallbackImage: r.fallback_image ?? "", overlays: parseList(r.overlays) }));
   }
   channelMeta(name: string): ChannelMeta | undefined {
     return this.channelMetas().find((c) => c.name === name);
@@ -241,10 +260,11 @@ export class ConfigStore {
     const prev = this.channelMeta(name)!;
     if (patch.logo !== undefined && patch.logo !== prev.logo) patch = { ...patch, logoGenerated: !!patch.logoGenerated };
     else { const { logoGenerated: _ignored, ...rest } = patch; patch = rest; }
-    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", fallbackImage: "fallback_image" };
+    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", fallbackImage: "fallback_image", overlays: "overlays" };
     for (const [k, col] of Object.entries(cols)) {
-      const v = (patch as any)[k];
+      let v = (patch as any)[k];
       if (v === undefined) continue;
+      if (k === "overlays") v = JSON.stringify(Array.isArray(v) ? v.filter((x: unknown) => typeof x === "string" && x) : []);
       this.db.prepare(`UPDATE channel_meta SET ${col}=? WHERE name=?`).run(k === "enabled" || k === "logoGenerated" ? (v ? 1 : 0) : v, name);
     }
     return this.channelMeta(name)!;

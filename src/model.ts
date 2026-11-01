@@ -136,6 +136,8 @@ export interface GraphicsLayer {
   horizontal_margin_percent?: number;
   vertical_margin_percent?: number;
   opacity_percent?: number;
+  /** margins measured from the visible picture, not the letterbox / pillarbox bars */
+  within_source_content?: boolean;
   timing?: PeriodicTiming;
 }
 

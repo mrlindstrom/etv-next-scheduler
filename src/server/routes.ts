@@ -10,7 +10,7 @@ import { compilePodsDetailed, emitYaml } from "../pods/compile.js";
 import { podKey } from "../pods/model.js";
 import { MODULES, moduleById, listChannelFiles, channelFile } from "../scheduling/registry.js";
 import { floorLocalMidnight, ceilLocalMidnight, type Tz } from "../time.js";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { buildService, type BuildWorkerChannel } from "./build-service.js";
 import { ConfigStore } from "./config.js";
@@ -36,7 +36,9 @@ import { indexService } from "./index-service.js";
 import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
 import { SqliteResolver } from "../sqlite-resolver.js";
-import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
+import { overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES } from "./overlay-library.js";
+import { OVERLAY_FIELDS, sampleVars, overlaySvg, rasterize, assetPath, fillTemplate, type Overlay } from "../overlays.js";
+import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
 import { compareChannelNumbers } from "../channel-numbers.js";
 import { saveLogo, logoPath, logoContentType, pruneLogos, schedulerBaseUrl, lanAddress, legacyLogoFile, sniffImage, MAX_LOGO_BYTES, hasRealLogo, setGeneratedLogo, fillMissingLogos } from "./channel-logos.js";
@@ -732,14 +734,14 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
       const unfiltered = () => (unfilteredCache ??= { base: r, r: new SqliteResolver({ dbPath: libDb() }) }).r;
       for (const p of plans) checks[p.key] = await checkPlanContent(p, r, libDb(), unfiltered);
     }
-    return { sources, usedNumbers: Object.fromEntries(existingNumbers), channels: plans.map((p) => ({ ...p, check: checks[p.key] ?? null, ...(p.status === "exists" ? { hasLogo: hasRealLogo(store.channelMeta(p.name)) } : {}) })) };
+    return { sources, usedNumbers: Object.fromEntries(existingNumbers), channels: plans.map((p) => ({ ...p, check: checks[p.key] ?? null, ...(p.status === "exists" ? { hasLogo: hasRealLogo(store.channelMeta(p.name)), hasWatermark: !!p.watermark && (store.channelMeta(p.name)?.overlays ?? []).includes(`legacy-watermark-${p.watermark.row.Id}`) } : {}) })) };
   });
   app.post("/api/legacy/channels/import", async (req, reply) => {
     if (!store.get().legacyImport) { reply.code(409); return { error: "ErsatzTV legacy import is turned off. Turn it back on on the Connect tab if you need it." }; }
     const body = (req.body ?? {}) as { keys?: string[]; overwrite?: boolean; also?: string; numbers?: Record<string, string> };
     if (!body.keys?.length) return { error: "Pick at least one channel." };
     const { dir, plans, existingNumbers } = await legacyPlans(body.also);
-    const res = await applyLegacyImport(plans, body.keys, dir, store, { overwrite: !!body.overwrite, numbers: body.numbers, existingNumbers, logosDir: logosDir() });
+    const res = await applyLegacyImport(plans, body.keys, dir, store, { overwrite: !!body.overwrite, numbers: body.numbers, existingNumbers, logosDir: logosDir(), overlayAssetsDir: overlayAssetsDir(store, ROOT) });
     await fillLogos(res.imported.map((c) => c.name));
     return res;
   });
@@ -749,6 +751,13 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const body = (req.body ?? {}) as { names?: string[]; replace?: boolean; also?: string };
     const { plans } = await legacyPlans(body.also);
     return applyLegacyLogos(plans, store, logosDir(), { names: body.names, replace: !!body.replace });
+  });
+  // watermarks for channels you already imported (same name in legacy), as overlays
+  app.post("/api/legacy/channels/watermarks", async (req, reply) => {
+    if (!store.get().legacyImport) { reply.code(409); return { error: "ErsatzTV legacy import is turned off. Turn it back on on the Connect tab if you need it." }; }
+    const body = (req.body ?? {}) as { names?: string[]; also?: string };
+    const { plans } = await legacyPlans(body.also);
+    return applyLegacyWatermarks(plans, store, overlayAssetsDir(store, ROOT), { names: body.names });
   });
   // a legacy logo (by its artwork-cache key), to preview it in the import list
   app.get("/api/legacy/logo/:hash", async (req, reply) => {
@@ -823,6 +832,60 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     pruneUnusedLogos();
     return store.channelMeta(name);
   });
+  // --- overlays (timed graphics over programmes; see src/overlays.ts) ---------
+  app.addContentTypeParser(/^video\//, { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
+  if (!app.hasContentTypeParser("application/octet-stream")) app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
+  try { pruneOverlayCache(overlayCacheDir(store, ROOT)); } catch { /* ignore */ }
+  app.get("/api/overlays", async () => {
+    const usedBy: Record<string, string[]> = {};
+    for (const m of store.channelMetas()) for (const id of m.overlays ?? []) (usedBy[id] ??= []).push(m.name);
+    return { overlays: store.listOverlays(), fields: OVERLAY_FIELDS, usedBy };
+  });
+  app.post("/api/overlays", async (req, reply) => {
+    const o = (req.body ?? {}) as Overlay;
+    if (!o.name?.trim()) { reply.code(400); return { error: "Give the overlay a name." }; }
+    if (!Array.isArray(o.layers)) { reply.code(400); return { error: "An overlay needs a list of layers." }; }
+    const saved = { ...o, id: o.id || newOverlayId(), name: o.name.trim() };
+    store.saveOverlay(saved);
+    return store.getOverlay(saved.id);
+  });
+  app.delete("/api/overlays/:id", async (req) => {
+    const id = String((req.params as any).id);
+    store.deleteOverlay(id);
+    // take it off every channel that showed it
+    for (const m of store.channelMetas()) if (m.overlays?.includes(id)) store.upsertChannelMeta(m.name, { overlays: m.overlays.filter((x) => x !== id) });
+    return { ok: true };
+  });
+  // images / videos for overlay layers arrive as the raw file body
+  app.post("/api/overlays/assets", async (req, reply) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) { reply.code(400); return { error: "Send the image or video file as the request body." }; }
+    try { return await saveOverlayAsset(overlayAssetsDir(store, ROOT), req.body, decodeURIComponent(String(req.headers["x-file-name"] ?? ""))); }
+    catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  app.get("/overlay-assets/:file", async (req, reply) => {
+    const p = overlayAssetFile(overlayAssetsDir(store, ROOT), String((req.params as any).file));
+    if (!p || !existsSync(p)) return reply.code(404).send();
+    const ext = p.split(".").pop()!.toLowerCase();
+    const type = ({ mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska" } as Record<string, string>)[ext] ?? logoContentType(p);
+    reply.header("content-type", type).header("cache-control", "public, max-age=604800, immutable"); // content-addressed
+    return reply.send(await readFile(p));
+  });
+  // exactly what a build draws for the still layers (server fonts), with sample
+  // or given template values; PNG cropped to the layers, plus where it sits
+  app.post("/api/overlays/render", async (req, reply) => {
+    const body = (req.body ?? {}) as { overlay?: Overlay; vars?: Record<string, string> };
+    if (!body.overlay?.layers) { reply.code(400); return { error: "Send the overlay to render." }; }
+    const dir = overlayAssetsDir(store, ROOT);
+    const vars = { ...sampleVars(), ...(body.vars ?? {}) };
+    const s = overlaySvg(body.overlay, vars, (src) => {
+      try { const p = assetPath(src, dir); if (!p) return null; const b = readFileSync(p); return { data: b.toString("base64"), mime: logoContentType(p) }; } catch { return null; }
+    });
+    if (!s) return { png: null, box: null };
+    const png = await rasterize(s.svg);
+    if (!png) { reply.code(500); return { error: "The SVG rasterizer (@resvg/resvg-js) isn't installed — run npm install." }; }
+    return { png: `data:image/png;base64,${png.toString("base64")}`, box: s.box, texts: body.overlay.layers.map((l: any) => (l.type === "text" ? fillTemplate(l.text, vars) : null)) };
+  });
+
   // give every channel without a logo a generated one (also runs at startup)
   app.post("/api/channels/logos/generate", async () => ({ generated: await fillLogos() }));
   // renumber the whole lineup 1, 2, 3… keeping the current channel order
@@ -1149,6 +1212,7 @@ async function runBuild(jobId: string, channels: string[], cfg: any, days: numbe
       xmltvDir, tvgId: cm?.tvgId || name, seed: hashName(name), progress: store.getProgress(name),
       audioLang: cm?.audioLang || undefined, subtitles: cm?.subtitles || undefined,
       upNext: await upNextOptionsFor(store, name, ROOT),
+      overlays: overlayOptionsFor(store, name, ROOT),
       startMs, finishMs,
     });
     job.log.push(`building ${name}...`);
@@ -1168,6 +1232,7 @@ async function runBuild(jobId: string, channels: string[], cfg: any, days: numbe
         if (m.type === "result") {
           store.saveProgress(m.name, m.progress); // resume episode order on next build
           if (m.xmltvWarn) job.log.push(`  ${m.name}: xmltv warning ${m.xmltvWarn}`);
+          if (m.overlayWarn) job.log.push(`  ${m.name}: overlays: ${m.overlayWarn}`);
           job.results.push({ channel: m.name, itemCount: m.itemCount, file: m.file });
           job.log.push(`  ${m.name}: ${m.itemCount} items, ${m.guideCount} guide entries`);
           const rec = recByName.get(m.name); if (rec != null) store.finishBuild(rec, "done", m.itemCount, m.file, null);

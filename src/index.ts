@@ -11,6 +11,8 @@ import { applyLanguageTracks } from "./lang.js";
 import { moduleForFile } from "./scheduling/registry.js";
 import { buildTimeshift, parseTimeshift } from "./scheduling/timeshift-module.js";
 import { buildRemote } from "./scheduling/remote-module.js";
+import { applyOverlays } from "./overlays.js";
+import { PLAYOUT_VERSION_GRAPHICS } from "./model.js";
 
 export * from "./model.js";
 export * from "./yaml.js";
@@ -34,7 +36,7 @@ export interface ChannelBuildRequest {
   sourceXmltv?: string;
 }
 
-export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: string; itemCount: number; guide: import("./engine.js").GuideEntry[]; progress: Record<string, number>; xmltv?: string }> {
+export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: string; itemCount: number; guide: import("./engine.js").GuideEntry[]; progress: Record<string, number>; xmltv?: string; overlayProblems?: string[] }> {
   const src = await readFile(req.configPath, "utf8");
   const mod = moduleForFile(req.configPath);
   // a time-shift channel copies its source's playout instead of scheduling
@@ -76,10 +78,18 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
       if (item) item.tracks = { ...(item.tracks ?? {}), subtitle: { source: { source_type: "local", path: assFile } } };
     }
   }
+  // Overlays (watermarks, lower thirds…): resolve each item's templates against
+  // the guide and attach the rendered graphics layers.
+  let overlayProblems: string[] | undefined;
+  if (req.options.overlays) {
+    const r = await applyOverlays(playout.items, engine.getOverlayRefs(), engine.getLabels(), engine.getGuide(), req.options.tz, req.options.overlays);
+    if (r.items) playout.version = PLAYOUT_VERSION_GRAPHICS;
+    if (r.problems.length) overlayProblems = r.problems;
+  }
   const file = await writePlayout(
     req.outputDir, playout, req.options.startMs, req.options.finishMs, req.options.tz, engine.getLabels(),
   );
-  return { file, itemCount: items.length, guide: engine.getGuide(), progress: engine.getProgress() };
+  return { file, itemCount: items.length, guide: engine.getGuide(), progress: engine.getProgress(), overlayProblems };
 }
 
 /** Write a time-shift channel's shifted guide as its own XMLTV file. */

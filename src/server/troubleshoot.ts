@@ -29,6 +29,9 @@ import { itemDetail } from "./library-browse.js";
 import { getResolver } from "./resolverCache.js";
 import { upNextItem, type UpNextOptions } from "../engine.js";
 import { applyLanguageTracks } from "../lang.js";
+import { applyOverlays } from "../overlays.js";
+import { overlayOptionsFor } from "./overlay-library.js";
+const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 import { buildUpNextAss, DEFAULT_ASS_LAYOUT } from "../upnext-ass.js";
 import { formatRfc3339 } from "../time.js";
 import { PLAYOUT_VERSION_GRAPHICS, type GraphicsLayer, type PlayoutItem } from "../model.js";
@@ -113,7 +116,8 @@ export interface TestRequest {
   kind: "item" | "upnext";
   type?: string; id?: number; startSec?: number;   // kind "item"
   at?: number; theme?: string;                      // kind "upnext" (the card lists from `at`)
-  channel?: string;    // item: whose audio/subtitle settings to use; upnext: the channel
+  channel?: string;    // item: whose audio/subtitle settings (and overlays) to use; upnext: the channel
+  overlays?: boolean;  // item: draw the channel's overlays (default true)
   durationSec?: number;
   accel?: string;      // "default" (the streaming setting) or an accel id ("none" = software)
 }
@@ -316,6 +320,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
     const tz = store.get().tz;
     const accel = !req.accel || req.accel === "default" ? cfg.video.accel ?? "" : req.accel === "none" ? "" : req.accel;
     // the item, placed at a start time decided once next is up
+    let overlayNote = "";
     let mkItem: (startMs: number) => PlayoutItem, label: string, targetSec: number, startSec = 0, sourcePath: string | undefined;
     const files: { path: string; text: string }[] = [];
 
@@ -346,8 +351,19 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       // the channel's audio language + subtitles setting, as a build would apply them
       const meta = req.channel ? store.channelMeta(req.channel) : undefined;
       const path = d.path;
+      // the channel's overlays, as a build of this item as a programme would draw them
+      // (worked out once against the item's own start; timings are relative to it)
+      let overlayLayers: GraphicsLayer[] = [];
+      if (meta && req.overlays !== false && (meta.overlays ?? []).length) {
+        const probe: PlayoutItem = { id: "2", start: formatRfc3339(0, tz), finish: formatRfc3339(d.durationMs, tz), source: { source_type: "local", path } };
+        const item = { id: String(d.id), path, durationMs: d.durationMs, chapters: [], title: d.title, showTitle: d.showTitle, season: d.season, episodeNumber: d.episode, year: d.year ?? undefined, kind: d.type } as any;
+        const r = await applyOverlays([probe], new Map([["2", meta.overlays]]), {}, [{ startMs: 0, stopMs: d.durationMs, item }], tz, overlayOptionsFor(store, meta.name, root));
+        overlayLayers = probe.graphics ?? [];
+        if (r.problems.length) overlayNote = `Overlays: ${r.problems.join("; ")}`;
+      }
       mkItem = (t) => {
         const it: PlayoutItem = { id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + d.durationMs, tz), source: { source_type: "local", path } };
+        if (overlayLayers.length) it.graphics = clone(overlayLayers);
         if (meta) {
           const r = getResolver(ctx.libDb()); r.setDisabledLibraries(ctx.disabled());
           applyLanguageTracks({ version: "", items: [it] } as any, r, { audio: meta.audioLang, subtitles: meta.subtitles });
@@ -355,6 +371,8 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         return it;
       };
       label = d.showTitle ? `${d.showTitle} — ${d.title}` : d.title;
+      if (overlayLayers.length) label += ` · with ${overlayLayers.length} overlay${overlayLayers.length === 1 ? "" : "s"}`;
+      if (overlayNote) label += ` (${overlayNote})`;
       sourcePath = d.path;
     }
 

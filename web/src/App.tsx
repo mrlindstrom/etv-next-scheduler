@@ -5,6 +5,7 @@ import { Browse } from "./screens/Browse.js";
 import { Collections } from "./screens/Collections.js";
 import { Channels } from "./screens/Channels.js";
 import { Pods } from "./screens/Pods.js";
+import { Overlays } from "./screens/Overlays.js";
 import { BuildScreen } from "./screens/Build.js";
 import { Preview } from "./screens/Preview.js";
 import { Streaming } from "./screens/Streaming.js";
@@ -94,6 +95,7 @@ export function App() {
         {page === "browse" && <Browse />}
         {page === "collections" && <Collections />}
         {page === "pods" && <Pods />}
+        {page === "overlays" && <Overlays />}
         {page === "channels" && <Channels onNavigate={(t) => navigate(t)} />}
         {page === "streaming" && <Streaming />}
         {page === "build" && <BuildScreen config={config} />}

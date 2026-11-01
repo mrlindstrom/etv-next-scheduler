@@ -7,6 +7,7 @@
 // starting where coverage ends. It never rewrites the currently-airing window,
 // so a live stream is undisturbed. Optionally prunes fully-past windows.
 
+import { overlayOptionsFor } from "./overlay-library.js";
 import { appLog, pipeChildToLog } from "./app-log.js";
 import { indexService } from "./index-service.js";
 import { readdir, stat, unlink } from "node:fs/promises";
@@ -134,7 +135,7 @@ export class Scheduler {
             sourceXmltv: src ? join(xmltvDir, `${this.store.channelMeta(src)?.tvgId || src}.xml`) : undefined,
             options: { startMs: startInstant, finishMs: targetEnd, tz: c.tz, seed: hashName(name), progress: this.store.getProgress(name),
               preferredAudioLang: cm?.audioLang || undefined, subtitles: cm?.subtitles || undefined,
-              upNext: await upNextOptionsFor(this.store, name, this.root) },
+              upNext: await upNextOptionsFor(this.store, name, this.root), overlays: overlayOptionsFor(this.store, name, this.root) },
           });
           this.store.saveProgress(name, res.progress);
           try {
@@ -144,6 +145,7 @@ export class Scheduler {
           } catch (e) { this.note(`  ${name}: xmltv warning ${(e as Error).message}`); }
           this.store.finishBuild(rec, "done", res.itemCount, res.file, null);
           this.note(`  ${name}: +${res.itemCount} items, ${res.guide.length} guide entries`);
+          if (res.overlayProblems?.length) this.note(`  ${name}: overlays: ${res.overlayProblems.join("; ")}`);
         } catch (e) {
           const msg = (e as Error).message;
           this.store.finishBuild(rec, "error", null, null, msg);

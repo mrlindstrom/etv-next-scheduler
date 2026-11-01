@@ -7,6 +7,7 @@ import { GridScheduler } from "./GridScheduler.js";
 import { LegacyImport } from "./LegacyImport.js";
 import { compareChannelNumbers, normalizeChannelNumber } from "../channelNumbers.js";
 import { navigate } from "../nav.js";
+import { OverlayPicker } from "../OverlayPicker.js";
 
 // Common audio/subtitle languages (ISO 639-2 codes, matching ErsatzTV).
 const LANGS: { code: string; label: string }[] = [
@@ -213,7 +214,7 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
   const resetProgress = async () => { if (!sel) return; if (!confirm(`Reset "${sel}" playout progress?`)) return; await api.resetChannelProgress(sel); flash("Playout progress reset ✓"); };
   const flash = (t: string) => { setMsg(t); setTimeout(() => setMsg(""), 2500); };
   const updMeta = (k: keyof ChannelMeta) => (e: React.ChangeEvent<HTMLInputElement>) => setMeta((m) => m ? { ...m, [k]: k === "enabled" ? e.target.checked : e.target.value } : m);
-  const updMetaVal = (k: keyof ChannelMeta) => (v: string) => setMeta((m) => m ? { ...m, [k]: v } : m);
+  const updMetaVal = (k: keyof ChannelMeta) => (v: string | string[]) => setMeta((m) => m ? { ...m, [k]: v } : m);
   // the card music must exist on this machine, or the card airs silent
   const [audioMissing, setAudioMissing] = useState(false);
   // the Streaming page's fallback, named in the channel's "Default (…)" choice
@@ -452,6 +453,9 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
                   </label>
                   <button style={{ alignSelf: "flex-end" }} onClick={() => navigate("troubleshoot", { tab: "cards", channel: meta.name })} title="See this channel's card for any time, and try other themes">Preview card</button>
                 </div>
+                <div className="meta-subhead" style={{ margin: "10px 2px 2px", fontSize: 11, fontWeight: 700, letterSpacing: 1, opacity: 0.6, textTransform: "uppercase" }}>Overlays (watermark, lower thirds…)</div>
+                <OverlayPicker value={meta.overlays ?? []} onChange={updMetaVal("overlays")} empty="No overlays on this channel" />
+                <p className="muted" style={{ fontSize: 12, margin: "4px 0 6px" }}>Drawn over every programme. Save, then rebuild the channel to see them.</p>
                 <div className="meta-subhead" style={{ margin: "10px 2px 2px", fontSize: 11, fontWeight: 700, letterSpacing: 1, opacity: 0.6, textTransform: "uppercase" }}>Fallback picture</div>
                 <FallbackPicker key={meta.name} value={meta.fallbackImage ?? ""} onChange={updMetaVal("fallbackImage")} channel={meta.name}
                   defaultLabel={fallbackDefault === "black" ? "black screen" : fallbackDefault === "standby" ? "“We'll be right back” card" : "image from the Streaming page"} />

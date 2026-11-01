@@ -96,6 +96,18 @@ export function LegacyImport({ onImported, onNavigate, onOpenChannel }: Props) {
       onImported(r.updated);
     } catch (e) { setLogoMsg({ ok: false, text: String(e) }); }
   };
+  // channels you already imported whose legacy watermark isn't on them yet
+  const unmarked = useMemo(() => (plans ?? []).filter((p) => p.status === "exists" && !p.caseClash && p.watermark?.file && !p.hasWatermark), [plans]);
+  const [wmMsg, setWmMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const bringWatermarks = async () => {
+    setWmMsg(null);
+    try {
+      const r = await api.legacyWatermarks(unmarked.map((p) => p.name), also || undefined);
+      if (r.error) { setWmMsg({ ok: false, text: r.error }); return; }
+      setWmMsg({ ok: true, text: `Added watermarks to ${r.updated.length} channel${r.updated.length === 1 ? "" : "s"}${r.missing.length ? ` (${r.missing.length} couldn't be read: ${r.missing.join(", ")})` : ""}. They're on the Overlays page, where you can adjust them. Rebuild these channels to see them.` });
+      setPlans((ps) => ps && ps.map((p) => (r.updated.includes(p.name) ? { ...p, hasWatermark: true } : p)));
+    } catch (e) { setWmMsg({ ok: false, text: String(e) }); }
+  };
   const toggleOpen = (id: string) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   const run = async () => {
@@ -148,6 +160,13 @@ export function LegacyImport({ onImported, onNavigate, onOpenChannel }: Props) {
         </div>
       )}
       {logoMsg && <div className={logoMsg.ok ? "ok" : "err"} style={{ fontSize: 12, marginBottom: 8 }}>{logoMsg.text}</div>}
+      {unmarked.length > 0 && (
+        <div className="meta-card" style={{ marginBottom: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span><b>{unmarked.length}</b> of your channels {unmarked.length === 1 ? "has" : "have"} a watermark in legacy ({[...new Set(unmarked.map((p) => p.watermark!.row.Name))].slice(0, 4).join(", ")}{new Set(unmarked.map((p) => p.watermark!.row.Name)).size > 4 ? "…" : ""}). They come over as overlays, with the same corner, size, opacity and timing.</span>
+          <button className="primary" onClick={bringWatermarks}>Bring in their watermarks</button>
+        </div>
+      )}
+      {wmMsg && <div className={wmMsg.ok ? "ok" : "err"} style={{ fontSize: 12, marginBottom: 8 }}>{wmMsg.text}</div>}
       {(n((p) => !!p.numberClash && importable(p)) > 0 || numberProblem.size > 0) && (
         <div className="meta-card" style={{ marginBottom: 8, fontSize: 13 }}>
           Channel numbers must be unique. <b>{n((p) => !!p.numberClash && importable(p))}</b> legacy channel{n((p) => !!p.numberClash && importable(p)) === 1 ? " uses a number" : "s use numbers"} your channels already have

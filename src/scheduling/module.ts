@@ -19,6 +19,7 @@ export type Field =
   | { type: "checkbox"; key: string; label: string; help?: string; default?: boolean; showIf?: ShowIf }
   // a dropdown of the user's collections (value is "<type>::<name>")
   | { type: "collection"; key: string; label: string; help?: string; showIf?: ShowIf }
+  | { type: "overlays"; key: string; label: string; help?: string; showIf?: ShowIf }
   // a multi-select of the user's local libraries (value is a string[] of names)
   | { type: "libraries"; key: string; label: string; help?: string; showIf?: ShowIf }
   // a dropdown of the other channels (value is the channel name)

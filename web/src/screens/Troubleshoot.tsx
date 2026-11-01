@@ -175,6 +175,7 @@ function ProbeTable({ title, p }: { title: string; p: ProbeSummary }) {
 
 // ---- playback test -------------------------------------------------------------
 function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
+  const [withOverlays, setWithOverlays] = useState(true);
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -243,7 +244,7 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
               {[15, 30, 60, 120, 300].map((n) => <option key={n} value={n}>{n < 60 ? `${n} seconds` : `${n / 60} minute${n > 60 ? "s" : ""}`}</option>)}
             </select>
           </label>
-          <label title="Uses that channel's audio language and subtitles settings">Audio and subtitles like
+          <label title="Uses that channel's audio language, subtitles and overlays">Audio, subtitles and overlays like
             <select value={channel} onChange={(e) => setChannel(e.target.value)}>
               <option value="">No channel (file defaults)</option>
               {channels.map((c) => <option key={c.name} value={c.name}>{c.meta!.number} · {c.name}</option>)}
@@ -253,11 +254,14 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
             <select value={accel} onChange={(e) => setAccel(e.target.value)}>{ACCELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
         </div>
+        {channel && (channels.find((c) => c.name === channel)?.meta?.overlays?.length ?? 0) > 0 && (
+          <label className="ov-inline" style={{ margin: "4px 0" }}><input type="checkbox" checked={withOverlays} onChange={(e) => setWithOverlays(e.target.checked)} /> Draw the channel's overlays (timed from the start of the item, so a "60 seconds in" lower third shows 60 seconds into the file)</label>
+        )}
         <p className="muted" style={{ fontSize: 12 }}>
           This starts a separate, temporary ErsatzTV next on its own port, with your streaming settings, and plays just this item. Your channels keep running.
         </p>
         <div className="row" style={{ alignItems: "center" }}>
-          <button className="primary" disabled={!item || t.busy} onClick={() => item && t.start({ kind: "item", type: item.type, id: item.id, startSec: parseTime(start), durationSec: length, channel: channel || undefined, accel })}>
+          <button className="primary" disabled={!item || t.busy} onClick={() => item && t.start({ kind: "item", type: item.type, id: item.id, startSec: parseTime(start), durationSec: length, channel: channel || undefined, overlays: withOverlays, accel })}>
             {t.busy ? "Testing…" : "Start test"}
           </button>
           {!item && <span className="muted">Pick something above first.</span>}

@@ -32,6 +32,7 @@ import { toImmutableUri } from "../sqlite-resolver.js";
 import { makeCollectionRef, parseCollectionRef, type CollKind } from "../collection-ref.js";
 import type { ChannelMeta } from "./config.js";
 import { legacyLogoFile, importLegacyLogo, hasRealLogo } from "./channel-logos.js";
+import { legacyWatermarkFile, overlayFromLegacyWatermark, importLegacyOverlayImage, LEGACY_WATERMARK_IMAGE_SOURCE } from "./overlay-library.js";
 
 // legacy enums
 const PLAYBACK_ORDER: Record<number, { order: string; warn?: string }> = {
@@ -73,6 +74,9 @@ export interface LegacyChannelPlan {
   // the channel's legacy logo: a cached file (by its cache key) or a URL; `file`
   // is missing when the cache key is known but the file isn't on this machine
   logo?: { hash?: string; file?: string; url?: string };
+  // the channel's legacy watermark (a ChannelWatermark row) and its image file on
+  // this machine (legacy's watermark cache, or the channel logo when it used that)
+  watermark?: { row: any; file?: string };
   warnings: string[];
 }
 
@@ -340,6 +344,17 @@ export function planLegacyImport(legacyDbPath: string, opts: {
       return { hash: path, file: legacyLogoFile(logoDbs, path) ?? undefined };
     };
 
+    // channel watermarks: the row, plus its image (legacy's watermark cache, or the
+    // channel's logo for "use channel logo" watermarks)
+    const watermarkOf = (id: number, plan: LegacyChannelPlan): LegacyChannelPlan["watermark"] => {
+      if (!has("ChannelWatermark")) return undefined;
+      const row = one(`SELECT * FROM ChannelWatermark WHERE Id=?`, id);
+      if (!row) return undefined;
+      const file = Number(row.ImageSource) === LEGACY_WATERMARK_IMAGE_SOURCE.ChannelLogo ? "channel logo" : row.Image ? legacyWatermarkFile(logoDbs, String(row.Image)) ?? undefined : undefined;
+      if (file) overlayFromLegacyWatermark(row, file, plan.warnings); // dry run: notes on what doesn't translate
+      return { row, file };
+    };
+
     const plans: LegacyChannelPlan[] = [];
     // existing channel names, compared ignoring case (see LegacyChannelPlan.caseClash)
     const existingLower = new Map([...opts.existing].map((n) => [n.toLowerCase(), n]));
@@ -360,10 +375,14 @@ export function planLegacyImport(legacyDbPath: string, opts: {
       if (r.audio) meta.audioLang = r.audio;
       // legacy subtitle mode: 0 None, 1 Forced, 2 Default, 3 Any (older DBs: language only)
       meta.subtitles = r.submode == null ? (r.subs ? "forced" : "off") : Number(r.submode) === 1 ? "forced" : Number(r.submode) >= 2 ? "on" : "off";
-      if (r.wm) warnings.push("channel watermark isn't imported — set it up under graphics");
       if (name !== String(r.name)) warnings.push(`renamed to "${name}" (characters not allowed in file names)`);
       const plan: LegacyChannelPlan = { key: `${meta.number}|${name}`, playoutId: r.pid, channelId: r.cid, number: meta.number!, name, kind, schedule: null, file: null, status: "unsupported", config: null, meta, warnings, logo: logoOf(r.cid) };
       if (plan.logo?.hash && !plan.logo.file) warnings.push("its logo isn't in legacy's artwork cache on this machine — upload one on the channel after importing");
+      if (r.wm) {
+        plan.watermark = watermarkOf(r.wm, plan);
+        if (!plan.watermark) warnings.push("its watermark no longer exists in legacy");
+        else if (!plan.watermark.file) warnings.push(`its watermark "${plan.watermark.row.Name}" has no image on this machine — it isn't imported`);
+      }
       plans.push(plan);
 
       if (kind === "yaml") {
@@ -585,7 +604,7 @@ export async function checkPlanContent(
   } finally { try { lib?.close(); } catch { /* ignore */ } }
 }
 
-export interface ApplyResult { imported: { name: string; file: string; logo?: boolean }[]; skipped: { name: string; reason: string }[]; }
+export interface ApplyResult { imported: { name: string; file: string; logo?: boolean; watermark?: boolean }[]; skipped: { name: string; reason: string }[]; }
 
 /** Write the selected plans' configs into the channels folder and register their
  *  channel settings. Existing channels are only replaced when `overwrite` is set. */
@@ -597,6 +616,7 @@ export async function applyLegacyImport(
     numbers?: Record<string, string>;         // plan key -> channel number to import it as
     existingNumbers?: Map<string, string>;    // normalized number -> your channel using it
     logosDir?: string;                        // where channel logos are stored
+    overlayAssetsDir?: string;                // where overlay images are stored (watermarks)
   } = {},
 ): Promise<ApplyResult> {
   const want = new Set(keys);
@@ -621,17 +641,53 @@ export async function applyLegacyImport(
     // the legacy logo comes along — but a replaced channel keeps a logo you set
     const logo = !hasRealLogo(store.channelMeta?.(p.name)) && opts.logosDir ? await legacyLogoValue(p, opts.logosDir) : null;
     store.upsertChannelMeta(p.name, { ...p.meta, number, ...(logo ? { logo } : {}) });
+    const watermark = opts.overlayAssetsDir && store.saveOverlay ? await importWatermark(p, store as WatermarkStore, opts.overlayAssetsDir) : null;
     taken.set(normalizeChannelNumber(number), p.name);
     done.add(p.name.toLowerCase());
-    out.imported.push({ name: p.name, file: p.file, logo: !!logo });
+    out.imported.push({ name: p.name, file: p.file, logo: !!logo, watermark: !!watermark });
   }
   return out;
 }
 
 type LogoStore = {
   upsertChannelMeta(name: string, patch: Partial<ChannelMeta>): unknown;
-  channelMeta?(name: string): { logo?: string; logoGenerated?: boolean } | null | undefined;
+  channelMeta?(name: string): { logo?: string; logoGenerated?: boolean; overlays?: string[] } | null | undefined;
+  saveOverlay?(o: any): void;
+  getOverlay?(id: string): any;
 };
+type WatermarkStore = Required<LogoStore>;
+
+/** Bring a plan's legacy watermark in as an overlay (shared by channels that used
+ *  the same legacy watermark) and put it on the channel. Returns the overlay id. */
+async function importWatermark(p: LegacyChannelPlan, store: WatermarkStore, assetsDir: string): Promise<string | null> {
+  if (!p.watermark?.file) return null;
+  const warnings: string[] = [];
+  const id = `legacy-watermark-${p.watermark.row.Id}`;
+  if (!store.getOverlay(id)) {
+    const src = Number(p.watermark.row.ImageSource) === LEGACY_WATERMARK_IMAGE_SOURCE.ChannelLogo ? null : await importLegacyOverlayImage(assetsDir, p.watermark.file);
+    const o = overlayFromLegacyWatermark(p.watermark.row, src, warnings);
+    if (!o) return null;
+    store.saveOverlay(o);
+  }
+  const have = store.channelMeta(p.name)?.overlays ?? [];
+  if (!have.includes(id)) store.upsertChannelMeta(p.name, { overlays: [...have, id] });
+  return id;
+}
+
+/** For channels you already have (same name as a legacy channel): bring over their
+ *  legacy watermarks as overlays. Channels that already show that watermark are skipped. */
+export async function applyLegacyWatermarks(plans: LegacyChannelPlan[], store: WatermarkStore, assetsDir: string, opts: { names?: string[] } = {}): Promise<{ updated: string[]; missing: string[] }> {
+  const want = opts.names ? new Set(opts.names) : null;
+  const out = { updated: [] as string[], missing: [] as string[] };
+  const seen = new Set<string>();
+  for (const p of plans) {
+    if (p.status !== "exists" || p.caseClash || !p.watermark || seen.has(p.name) || (want && !want.has(p.name))) continue;
+    seen.add(p.name);
+    if ((store.channelMeta(p.name)?.overlays ?? []).includes(`legacy-watermark-${p.watermark.row.Id}`)) continue;
+    if (await importWatermark(p, store, assetsDir)) out.updated.push(p.name); else out.missing.push(p.name);
+  }
+  return out;
+}
 
 /** A plan's legacy logo as a channel `logo` value (stored file or URL), or null. */
 async function legacyLogoValue(p: LegacyChannelPlan, logosDir: string): Promise<string | null> {

@@ -2,6 +2,7 @@
 // Supports text / textarea / query / number / select / checkbox / libraries, and
 // repeatable `list` groups (e.g. the schedule's blocks). Any module that declares
 // a schema gets a form for free.
+import { OverlayPicker } from "./OverlayPicker.js";
 import { useEffect, useState } from "react";
 import { api, type SchemaField, type LibraryInfo, type CollectionInfo } from "./api.js";
 import { QueryBox } from "./QueryBox.js";
@@ -27,6 +28,7 @@ function FieldView({ f, value, onChange }: { f: SchemaField; value: any; onChang
   if (f.type === "libraries") return <LibrariesField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
   if (f.type === "collection") return <CollectionField f={f} value={value} onChange={onChange} />;
   if (f.type === "channel") return <ChannelField f={f} value={value} onChange={onChange} />;
+  if (f.type === "overlays") return <label>{f.label}<OverlayPicker value={Array.isArray(value) ? value : []} onChange={onChange} />{f.help && <span className="muted" style={{ fontSize: 12 }}>{f.help}</span>}</label>;
   if (f.type === "checkbox")
     return <label className="switch"><input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} /> {f.label}{f.help && <span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>{f.help}</span>}</label>;
   if (f.type === "select")

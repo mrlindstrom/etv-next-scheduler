@@ -7,15 +7,31 @@ export interface UpdateStatus { binDir: string; checkedAt: number | null; checkE
 export interface NextRunnerStatus { enabled: boolean; phase: "stopped" | "waiting" | "starting" | "running" | "crashed"; detail: string; problem: string | null; pid: number | null; uptimeSec: number; port: number; stale: boolean; hasPlayouts: boolean; binaryFound: boolean; binaryPath: string; version: string | null; versionWarning: string | null; restarts: number; lastExit: { code: number | null; signal: string | null; at: number } | null; log: string[]; }
 export interface SchedulerStatus { enabled: boolean; intervalMin?: number; thresholdHours?: number; running?: boolean; lastTick?: string | null; nextTickAt?: string | null; log?: string[]; }
 export interface VerifyResult { ok: boolean; problems?: string[]; error?: string; path?: string; stats?: { mediaItems: number; episodes: number; shows: number; chapters: number }; }
-export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; fallbackImage: string; }
+export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; fallbackImage: string; overlays: string[]; }
 export type ContentFix = "refresh-metadata" | "scan-source" | "import-library" | "enable-library" | null;
 export interface ContentCheck { items: number; airsNothing: boolean; problems: { role: string; what: string; reason: string; fix: ContentFix }[]; }
-export interface LegacyChannelPlan { key: string; playoutId: number; channelId: number; number: string; name: string; kind: "classic" | "block" | "yaml" | "other"; schedule: string | null; file: string | null; status: "new" | "exists" | "unsupported"; config: string | null; warnings: string[]; check: ContentCheck | null; caseClash?: string; numberClash?: string; suggestedNumber?: string; logo?: { hash?: string; file?: string; url?: string }; hasLogo?: boolean; }
+export interface LegacyChannelPlan { key: string; playoutId: number; channelId: number; number: string; name: string; kind: "classic" | "block" | "yaml" | "other"; schedule: string | null; file: string | null; status: "new" | "exists" | "unsupported"; config: string | null; warnings: string[]; check: ContentCheck | null; caseClash?: string; numberClash?: string; suggestedNumber?: string; logo?: { hash?: string; file?: string; url?: string }; hasLogo?: boolean; watermark?: { row: { Id: number; Name: string }; file?: string }; hasWatermark?: boolean; }
 /** Where a channel's `logo` value can be shown from in the browser ("" = none):
  *  a stored logo ("logos/<file>", served by this server) or an external URL. */
 export const logoSrc = (logo?: string): string => (!logo ? "" : /^https?:\/\//i.test(logo) ? logo : logo.startsWith("logos/") ? `/${logo}` : "");
 /** A legacy channel's logo, for previews in the import list. */
 export const legacyLogoSrc = (p: LegacyChannelPlan): string => p.logo?.url ?? (p.logo?.hash && p.logo.file ? `/api/legacy/logo/${p.logo.hash}` : "");
+// ---- overlays (timed graphics over programmes; see src/overlays.ts) ----
+interface OvBox { x: number; y: number; w: number; h: number; opacity?: number }
+export type OverlayLayer =
+  | (OvBox & { type: "image"; src: string })
+  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean })
+  | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
+  | (OvBox & { type: "video"; src: string });
+export interface OverlayTiming { mode: "always" | "every" | "start" | "end"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number }
+export type OverlayLocation = "top_left" | "top_center" | "top_right" | "center_left" | "center" | "center_right" | "bottom_left" | "bottom_center" | "bottom_right";
+export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; updatedAt?: string }
+export interface OverlayField { key: string; label: string; sample: string }
+/** Where an overlay asset (`assets/<file>`, or an absolute path on the server) shows in the browser. */
+export const CHANNEL_LOGO = "channel-logo";
+const LOGO_PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect x="6" y="6" width="388" height="388" rx="40" fill="rgba(79,140,255,.25)" stroke="#4f8cff" stroke-width="8" stroke-dasharray="24 14"/><text x="200" y="185" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">CHANNEL</text><text x="200" y="260" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">LOGO</text></svg>');
+export const overlayAssetSrc = (src: string): string => (src === CHANNEL_LOGO ? LOGO_PLACEHOLDER : src.startsWith("assets/") ? `/overlay-assets/${src.slice(7)}` : "");
+
 export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; repeats?: boolean; ads?: number; }
 export interface ShowIf { key: string; equals: string | string[]; }
 export type SchemaField =
@@ -26,6 +42,7 @@ export type SchemaField =
   | { type: "collection"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "libraries"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "channel"; key: string; label: string; help?: string; showIf?: ShowIf }
+  | { type: "overlays"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; fields: SchemaField[]; showIf?: ShowIf };
 /** What a remote stream channel's playlist and guide resolve to ("Check stream"). */
 export interface RemoteProbe {
@@ -86,7 +103,7 @@ export interface TroubleSystem {
   streaming: { codec: string; accel: string; accelLabel: string; encoder: string; size: string; bitrateKbps: number; audio: string };
 }
 export interface HwTestResult { accel: string; label: string; codec: string; encoder: string; ok: boolean; ms: number; error?: string; current: boolean; }
-export interface TestRequest { kind: "item" | "upnext"; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; durationSec?: number; accel?: string; }
+export interface TestRequest { kind: "item" | "upnext"; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
 export interface TestRun {
   id: string; label: string; status: "starting" | "running" | "finishing" | "done" | "failed" | "stopped"; message: string; startedAt: number; finishedAt?: number;
   request: TestRequest; accel: string; encoder: string; port: number; targetSec: number; capturedSec: number; firstSegmentSec?: number; speed?: number;
@@ -227,6 +244,14 @@ export const api = {
   playout: (channel: string, file: string): Promise<PlayoutView> => fetch(`/api/playouts/${channel}/${file}`).then(j),
   scheduler: (): Promise<SchedulerStatus> => fetch("/api/scheduler").then(j),
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
+  overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
+  saveOverlay: (o: Overlay): Promise<Overlay> => fetch("/api/overlays", opts("POST", o)).then(j),
+  deleteOverlay: (id: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/${encodeURIComponent(id)}`, opts("DELETE")).then(j),
+  uploadOverlayAsset: (file: File): Promise<{ src: string; kind: "image" | "video"; error?: string }> =>
+    fetch("/api/overlays/assets", { method: "POST", headers: { "Content-Type": file.type && /^(image|video)\//.test(file.type) ? file.type : "application/octet-stream", "x-file-name": encodeURIComponent(file.name) }, body: file }).then(j),
+  renderOverlay: (overlay: Overlay, vars?: Record<string, string>): Promise<{ png: string | null; box: { x: number; y: number; w: number; h: number } | null; error?: string }> => fetch("/api/overlays/render", opts("POST", { overlay, vars })).then(j),
+  legacyWatermarks: (names?: string[], also?: string): Promise<{ updated: string[]; missing: string[]; error?: string }> =>
+    fetch("/api/legacy/channels/watermarks", opts("POST", { names, also })).then(j),
   pods: (): Promise<Pod[]> => fetch("/api/pods").then(j),
   savePod: (pod: Pod): Promise<Pod> => fetch("/api/pods", opts("POST", pod)).then(j),
   deletePod: (id: string): Promise<{ ok: boolean }> => fetch(`/api/pods/${encodeURIComponent(id)}`, opts("DELETE")).then(j),

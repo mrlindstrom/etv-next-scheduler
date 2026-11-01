@@ -28,6 +28,7 @@ export interface GridProgram {
   order?: PlaybackOrder;                        // default: chronological for shows, shuffle otherwise
   breaks?: "default" | "off";                   // mid-roll ad breaks for this program
   color?: string;
+  overlays?: string[];                          // overlays (library ids) shown during this show
 }
 export interface GridCell { day: number; start: number; span: number; program: string } // day 0=Sun; minutes
 export interface GridSeason { id: string; name: string; from?: string; to?: string; cells: GridCell[]; fallback?: string } // from/to "MM-DD" (annual)
@@ -132,7 +133,8 @@ export function compileGrid(cfg: GridConfig): PlayoutDoc {
     if (!p || !p.value) return null;
     const sk = `S_${key(p.id)}`;
     if (sequences[sk]) return sk;
-    const items: Instruction[] = [{ op: "epg_group", value: true }];
+    const overlays = (p.overlays ?? []).filter(Boolean);
+    const items: Instruction[] = [...overlays.map((o): Instruction => ({ op: "graphics_on", element: o })), { op: "epg_group", value: true }];
     const withBreaks = breaksOn && p.breaks !== "off";
     items.push(withBreaks
       ? { op: "mid_roll", enabled: true, pod: "GRID_BREAK", mode: br.mode ?? "count", interval: `${br.interval ?? 8} minutes`, breaks: br.breaks ?? 2 }
@@ -141,6 +143,7 @@ export function compileGrid(cfg: GridConfig): PlayoutDoc {
     items.push({ op: "mid_roll", enabled: false });
     if (fillKey) items.push({ op: "pad_to_next", content: fillKey, minutes: SLOT_MIN, fillerKind: "tail", trim: true });
     items.push({ op: "epg_group", value: false });
+    for (const o of overlays) items.push({ op: "graphics_off", element: o });
     sequences[sk] = { key: sk, items };
     return sk;
   };

@@ -12,6 +12,7 @@
 // the first after a scan — pays the ~15s load; every other build reuses it and
 // is fast. Requests are queued and processed one at a time.
 
+import type { OverlayBuildOptions } from "../overlays.js";
 import { parentPort } from "node:worker_threads";
 import { DatabaseSync } from "node:sqlite";
 import { buildChannel, writeShiftedXmltv } from "../index.js";
@@ -31,6 +32,7 @@ export interface BuildWorkerChannel {
   audioLang?: string;
   subtitles?: string;
   upNext?: UpNextOptions;
+  overlays?: OverlayBuildOptions;
   startMs: number;
   finishMs: number;
   sourceXmltv?: string;      // time-shift channels: the source channel's guide file
@@ -94,7 +96,7 @@ async function handle(req: BuildWorkerRequest): Promise<void> {
           startMs: c.startMs, finishMs: c.finishMs, tz: req.tz,
           seed: c.seed, progress: c.progress,
           preferredAudioLang: c.audioLang || undefined, subtitles: c.subtitles || undefined,
-          upNext: c.upNext,
+          upNext: c.upNext, overlays: c.overlays,
         },
       });
       let xmltvWarn: string | undefined;
@@ -103,7 +105,7 @@ async function handle(req: BuildWorkerRequest): Promise<void> {
         else if (req.xmltvMode === "merge") await mergeChannelXmltv(c.xmltvDir, c.tvgId, res.guide, req.tz, req.now, r, req.artBase);
         else await writeChannelXmltv(c.xmltvDir, c.tvgId, res.guide, req.tz, r, req.artBase);
       } catch (e) { xmltvWarn = (e as Error).message; }
-      post({ type: "result", name: c.name, itemCount: res.itemCount, file: res.file, progress: res.progress, guideCount: res.guide.length, xmltvWarn });
+      post({ type: "result", name: c.name, itemCount: res.itemCount, file: res.file, progress: res.progress, guideCount: res.guide.length, xmltvWarn, overlayWarn: res.overlayProblems?.join("; ") });
     } catch (e) {
       post({ type: "error", name: c.name, msg: (e as Error).message });
     }
