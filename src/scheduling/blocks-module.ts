@@ -37,6 +37,7 @@ interface Block {
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
   upNext?: boolean;                // up-next card after the block when it isn't padded (back-to-back)
   overlays?: string[];             // overlays (library ids) shown during this block, on top of the channel's own
+  inGuide?: boolean;               // false = plays like filler, with no guide entry of its own (legacy guide mode "filler")
 }
 interface ScheduleConfig extends StationOptions { blocks: Block[]; }
 
@@ -103,8 +104,9 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     // hour) and budgets its mid-roll breaks to end there; with alignFit off
     // (legacy post-roll pad) breaks aren't budgeted and the item pads to the
     // next barrier after it finishes.
-    playout.push({ op: "epg_group", value: true });
-    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined });
+    const grouped = b.inGuide !== false;
+    if (grouped) playout.push({ op: "epg_group", value: true });
+    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined });
     else if (b.fill === "duration") playout.push({ op: "duration", content: key, duration: `${Math.max(1, b.minutes ?? 30)} minutes`, fallback: fallbackKey });
     else playout.push({ op: "pad_until", content: key, when: "00:00", tomorrow: true }); // flood to end of day
     if (b.preRoll) playout.push({ op: "pre_roll_off" });
@@ -123,7 +125,7 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     // back-to-back block can ask for one straight after it (inside its guide
     // entry, so the next programme's entry starts when the card ends).
     if (b.upNext && !padded && b.fill !== "flood") playout.push({ op: "up_next", afterProgram: true });
-    playout.push({ op: "epg_group", value: false });
+    if (grouped) playout.push({ op: "epg_group", value: false });
     for (const o of overlays) playout.push({ op: "graphics_off", element: o });
   });
 
@@ -175,6 +177,7 @@ const SCHEMA: Field[] = [
       { type: "checkbox", key: "alignFit", label: "Aligned: keep ad breaks inside each show's slot", default: true, help: "Shows of any length are aligned: a show longer than the slot takes as many as it needs (a 44-minute show fills an hour on a half-hour grid). Off = breaks aren't budgeted to the slot and can push the show past the next mark (legacy behavior)." },
       { type: "checkbox", key: "upNext", label: "Show the up-next card after this block", help: "For blocks that aren't aligned to the clock: the card plays right after the block, then the next item starts. Aligned blocks already show it at the start of their padding. Uses the channel's up-next theme (Channels page) and needs up-next cards turned on (Streaming page).", showIf: { key: "align", equals: ["0", ""] } },
       { type: "collection", key: "fallbackCollection", label: "Fallback filler collection (optional)", help: "Covers any gap the padding can't fill exactly; its last item is trimmed." },
+      { type: "checkbox", key: "inGuide", label: "Show this block in the guide", default: true, help: "Off = it plays like filler (bumpers, interstitials) with no guide entry of its own." },
       { type: "overlays", key: "overlays", label: "Overlays during this block", help: "Graphics shown over this block's programmes (lower thirds, a special bug…), on top of the channel's own overlays. Make them on the Overlays page." },
     ],
   },

@@ -445,7 +445,7 @@ export function planLegacyImport(legacyDbPath: string, opts: {
 
         if (it.StartTime) warnings.push(`${where}: fixed start time ${it.StartTime} isn't supported — blocks play back-to-back`);
         if (it.CustomTitle) b.title = it.CustomTitle;
-        if (it.GuideMode) warnings.push(`${where}: guide mode 'filler' isn't supported`);
+        if (it.GuideMode) b.inGuide = false; // legacy guide mode "filler": plays, no guide entry of its own
         if (it.MarathonGroupBy || it.FillWithGroupMode) warnings.push(`${where}: marathon / fill-with-group settings aren't supported`);
         if (it.PreferredAudioLanguageCode && !meta.audioLang) meta.audioLang = it.PreferredAudioLanguageCode;
 
