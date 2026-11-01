@@ -92,6 +92,7 @@ export class SchedulingEngine {
   private activeWatermarks: string[] = [];
   private preRoll: { content: string; count: number } | null = null;
   private midRoll: MidRollState | null = null;
+  private inMidRollBreak = false;
   private lastPlayed = new Map<string, number>(); // item id -> wall-clock ms last aired (no-repeat)
   private slotEndMs: number | null = null; // wall-clock deadline for the current block (grid slot)
   private currentShowTitle: string | undefined; // the airing program's show title (for ${show_title} bumpers)
@@ -526,6 +527,8 @@ export class SchedulingEngine {
     // a playlist entry kept out of the guide plays like filler
     const from = opts.contentKey ? this.enumerators.get(opts.contentKey) : undefined;
     if (from instanceof PlaylistEnumerator && !from.lastInGuide && !opts.fillerKind) opts = { ...opts, fillerKind: "postroll" };
+    // anything a fixed mid-roll sequence adds is the break, not the show
+    if (this.inMidRollBreak && !opts.fillerKind) opts = { ...opts, fillerKind: "midroll" };
     // the first program (episode/movie) inside an EPG group defines its guide entry
     if (this.groupStartMs != null && !this.groupItem && !opts.fillerKind && (item.kind === "episode" || item.kind === "movie")) {
       this.groupItem = item;
@@ -627,7 +630,10 @@ export class SchedulingEngine {
       await this.addSimple(item, segStart, bp, opts);              // episode segment
       const beforeBreak = this.nowMs, breakStart = this.items.length;
       if (mr.pod) await this.executePod(mr.pod, maxBreakMs);       // pod-built break
-      else if (mr.sequence) await this.execSequence(mr.sequence);  // fixed sequence break
+      else if (mr.sequence) {                                      // fixed sequence break
+        this.inMidRollBreak = true;
+        try { await this.execSequence(mr.sequence); } finally { this.inMidRollBreak = false; }
+      }
       // a fixed break can run longer than estimated: drop its last items until
       // the rest of the episode still ends inside the slot
       if (this.slotEndMs != null) this.trimBreak(breakStart, this.slotEndMs - (dur - bp) - RESERVE_MS);

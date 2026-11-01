@@ -602,6 +602,9 @@ export async function applyOverlays(
   for (const o of opts.library) { lib.set(o.id, o); if (!lib.has(o.name.toLowerCase())) lib.set(o.name.toLowerCase(), o); }
   const find = (ref: string): Overlay | null => lib.get(ref) ?? lib.get(ref.toLowerCase()) ?? (IMAGE_FILE.test(ref) && existsSync(ref) ? adHocOverlay(ref) : null);
   const g = guide.slice().sort((a, b) => a.startMs - b.startMs);
+  // guide times keep fractions of a millisecond; item times are written to whole
+  // ms, so a show starting as the last one ends can look a hair inside it
+  const SLACK_MS = 5;
   const missing = new Set<string>();
   const assets = new Map<string, { data: string; mime: string } | null>();
   const readAsset = (src: string) => {
@@ -658,8 +661,8 @@ export async function applyOverlays(
     for (const item of items) {
       if (labels[item.id]?.fillerKind) continue;
       const s = Date.parse(item.start), f = Date.parse(item.finish);
-      while (k < g.length && g[k].stopMs <= s) k++;
-      if (k >= g.length || g[k].startMs > s) continue;
+      while (k < g.length && g[k].stopMs <= s + SLACK_MS) k++;
+      if (k >= g.length || g[k].startMs > s + SLACK_MS) continue;
       const cur = span.get(g[k]);
       span.set(g[k], cur ? { startMs: Math.min(cur.startMs, s), stopMs: Math.max(cur.stopMs, f) } : { startMs: s, stopMs: f });
     }
@@ -674,8 +677,8 @@ export async function applyOverlays(
     const ids = refs.get(item.id);
     if (!ids?.length) continue;
     const s = Date.parse(item.start), f = Date.parse(item.finish);
-    while (gi < g.length && g[gi].stopMs <= s) gi++;
-    const cur = gi < g.length && g[gi].startMs <= s ? g[gi] : undefined;
+    while (gi < g.length && g[gi].stopMs <= s + SLACK_MS) gi++;
+    const cur = gi < g.length && g[gi].startMs <= s + SLACK_MS ? g[gi] : undefined;
     const next = cur ? g[gi + 1] : g[gi];
     const filler = !!labels[item.id]?.fillerKind;
     const layers: GraphicsLayer[] = [];
