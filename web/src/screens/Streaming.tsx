@@ -105,6 +105,8 @@ export function Streaming() {
   const [msg, setMsg] = useState("");
   const [guideThemes, setGuideThemes] = useState<{ id: string; label: string }[]>([]);
   const [logoAddr, setLogoAddr] = useState<{ auto: string } | null>(null);
+  const [guideCheck, setGuideCheck] = useState<{ ffmpeg: string; found: boolean; drawtext: boolean } | null>(null);
+  useEffect(() => { if (tab === "guide") api.guideCheck().then(setGuideCheck).catch(() => setGuideCheck(null)); }, [tab]);
 
   useEffect(() => {
     api.getNextConfig().then(setCfg).catch(() => {});
@@ -298,11 +300,18 @@ export function Streaming() {
 
       {tab === "guide" && <>
       <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
-        Adds a scrolling on-screen guide as its own channel, built from every channel’s XMLTV: channels down the side,
-        half-hour columns across, a fixed header with a live clock, and random background music. It’s streamed to next as a
-        <code> script</code> playout source. Click Apply after enabling to add it to the lineup, then build playouts.
-        Needs <code>@resvg/resvg-js</code> and an ffmpeg with <code>drawtext</code>.
+        Adds a scrolling TV guide as its own channel, like the old cable preview channels: your channels down the side,
+        half-hour columns across, a clock at the top and background music. It's drawn live from every channel's guide.
+        To set it up, tick <b>Enable guide channel</b>, click <b>Apply</b> to add it to the lineup, then build playouts.
       </p>
+      {guideCheck && (guideCheck.drawtext
+        ? <p className="muted" style={{ fontSize: 12 }}>✓ Your ffmpeg can draw the guide.</p>
+        : <p className="warn" style={{ fontSize: 12 }}>
+            {guideCheck.found
+              ? <>Your ffmpeg (<code>{guideCheck.ffmpeg}</code>) can't draw text, so the guide channel would stay blank. </>
+              : <>The scheduler couldn't run ffmpeg (<code>{guideCheck.ffmpeg}</code>), so the guide channel can't play. </>}
+            Install the ErsatzTV ffmpeg under <b>Programs</b> at the top of this page, or set <b>ffmpeg path</b> on the Server tab to a full ffmpeg build.
+          </p>)}
       <div className="form">
         <div className="row">
           <label className="switch" style={{ alignSelf: "end", paddingBottom: 8 }}>

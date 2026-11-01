@@ -167,6 +167,7 @@ export const api = {
   deleteChannel: (name: string) => fetch(`/api/channels/${name}`, opts("DELETE")).then(j),
   upNextThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/upnext/themes").then(j),
   guideThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/guide/themes").then(j),
+  guideCheck: (): Promise<{ ffmpeg: string; found: boolean; drawtext: boolean }> => fetch("/api/guide/check").then(j),
   logs: (n = 400): Promise<{ lines: string[] }> => fetch(`/api/logs?n=${n}`).then(j),
   clearLogs: (): Promise<{ ok: boolean }> => fetch("/api/logs/clear", opts("POST")).then(j),
   getNextConfig: (): Promise<NextConfig> => fetch("/api/next-config").then(j),

@@ -18,6 +18,7 @@
 import type { FastifyInstance } from "fastify";
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
 import { join, isAbsolute } from "node:path";
 import type { ConfigStore } from "./config.js";
 import { parseXmltvTime } from "../xmltv.js";
@@ -115,6 +116,18 @@ export function registerGraphicsRoutes(app: FastifyInstance, store: ConfigStore,
   // Theme lists for the dropdowns — read the folders, so custom themes appear.
   app.get("/api/upnext/themes", async () => listThemes(themesDir()));
   app.get("/api/guide/themes", async () => listGuideThemes(guideThemesDir()));
+
+  // Can this machine draw the guide channel? It needs an ffmpeg with the
+  // drawtext filter (the ErsatzTV ffmpeg build has it; some minimal builds don't).
+  app.get("/api/guide/check", async () => {
+    const set = store.getNextConfig().ffmpegPath;
+    const ffmpeg = set ? absUnder(set) : "ffmpeg";
+    const r = await new Promise<{ ok: boolean; out: string }>((done) => {
+      execFile(ffmpeg, ["-hide_banner", "-filters"], { timeout: 15_000, windowsHide: true, maxBuffer: 4 << 20 },
+        (err, stdout) => done({ ok: !err || !!stdout, out: String(stdout ?? "") }));
+    });
+    return { ffmpeg, found: r.ok, drawtext: r.ok && /\sdrawtext\s/.test(r.out) };
+  });
 
   // Serve one PNG layer of the card. next fetches these as `media` graphics
   // layers and fades them natively via each layer's timing. `layer` selects the
