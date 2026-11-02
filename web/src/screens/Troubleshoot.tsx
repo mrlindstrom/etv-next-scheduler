@@ -186,6 +186,7 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
   const [length, setLength] = useState(30);
   const [channel, setChannel] = useState("");
   const [accel, setAccel] = useState("default");
+  const [guide, setGuide] = useState(() => param("guide") === "1"); // play the guide channel instead of a file
   const t = useTestRun();
 
   // arrived from Browse with an item picked
@@ -193,6 +194,10 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
     const type = param("type"), id = Number(param("id"));
     if (type && id) choose({ type, id, title: "", durationMs: 0 });
   }, []);
+  const ready = guide || !!item;
+  const startTest = () => guide
+    ? t.start({ kind: "guide", durationSec: length, accel })
+    : item && t.start({ kind: "item", type: item.type, id: item.id, startSec: parseTime(start), durationSec: length, channel: channel || undefined, overlays: withOverlays, accel });
 
   const search = async () => {
     if (!q.trim()) return;
@@ -210,6 +215,16 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
     <>
       <div className="card">
         <div className="card-head"><h2>1. Pick something to play</h2></div>
+        {guide ? (
+          <div className="ts-picked">
+            <div><b>The guide channel</b> <span className="muted">· the scrolling TV guide, drawn live from every channel's guide</span></div>
+            <p className="muted" style={{ fontSize: 12, margin: "4px 0" }}>
+              It uses the settings on Streaming → Guide channel (theme, columns, music), and works even before the guide channel is switched on.
+              Build your channels first so it has something to list.
+            </p>
+            <button className="ghost" onClick={() => setGuide(false)}>Pick a file instead</button>
+          </div>
+        ) : <>
         <div className="row">
           <input style={{ flex: 1 }} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()}
             placeholder='A title, or a search like show_title:"Hey Dude"' />
@@ -234,38 +249,43 @@ function PlaybackTest({ channels }: { channels: ChannelSummary[] }) {
             {probe && <ProbeTable title="File details" p={probe.probe} />}
           </div>
         )}
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="ghost" onClick={() => setGuide(true)}>Test the guide channel instead</button>
+        </div>
+        </>}
       </div>
 
       <div className="card">
         <div className="card-head"><h2>2. Choose how to play it</h2></div>
         <div className="row" style={{ flexWrap: "wrap" }}>
-          <label>Start at<input value={start} onChange={(e) => setStart(e.target.value)} placeholder="0:00" style={{ width: 90 }} /></label>
+          {!guide && <label>Start at<input value={start} onChange={(e) => setStart(e.target.value)} placeholder="0:00" style={{ width: 90 }} /></label>}
           <label>Play for
             <select value={length} onChange={(e) => setLength(Number(e.target.value))}>
               {[15, 30, 60, 120, 300].map((n) => <option key={n} value={n}>{n < 60 ? `${n} seconds` : `${n / 60} minute${n > 60 ? "s" : ""}`}</option>)}
             </select>
           </label>
-          <label title="Uses that channel's audio language, subtitles and overlays">Audio, subtitles and overlays like
+          {!guide && <label title="Uses that channel's audio language, subtitles and overlays">Audio, subtitles and overlays like
             <select value={channel} onChange={(e) => setChannel(e.target.value)}>
               <option value="">No channel (file defaults)</option>
               {channels.map((c) => <option key={c.name} value={c.name}>{c.meta!.number} · {c.name}</option>)}
             </select>
-          </label>
+          </label>}
           <label>Hardware acceleration
             <select value={accel} onChange={(e) => setAccel(e.target.value)}>{ACCELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
           </label>
         </div>
-        {channel && (channels.find((c) => c.name === channel)?.meta?.overlays?.length ?? 0) > 0 && (
+        {!guide && channel && (channels.find((c) => c.name === channel)?.meta?.overlays?.length ?? 0) > 0 && (
           <label className="ov-inline" style={{ margin: "4px 0" }}><input type="checkbox" checked={withOverlays} onChange={(e) => setWithOverlays(e.target.checked)} /> Draw the channel's overlays (timed from the start of the item, so a "60 seconds in" lower third shows 60 seconds into the file)</label>
         )}
         <p className="muted" style={{ fontSize: 12 }}>
-          This starts a separate, temporary ErsatzTV next on its own port, with your streaming settings, and plays just this item. Your channels keep running.
+          This starts a separate, temporary ErsatzTV next on its own port, with your streaming settings, and plays just {guide ? "the guide" : "this item"}. Your channels keep running.
+          {guide && " The guide takes a few seconds longer to start, since it draws its first frame first."}
         </p>
         <div className="row" style={{ alignItems: "center" }}>
-          <button className="primary" disabled={!item || t.busy} onClick={() => item && t.start({ kind: "item", type: item.type, id: item.id, startSec: parseTime(start), durationSec: length, channel: channel || undefined, overlays: withOverlays, accel })}>
+          <button className="primary" disabled={!ready || t.busy} onClick={startTest}>
             {t.busy ? "Testing…" : "Start test"}
           </button>
-          {!item && <span className="muted">Pick something above first.</span>}
+          {!ready && <span className="muted">Pick something above first.</span>}
           {t.err && <span className="err">{t.err}</span>}
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { compareChannelNumbers } from "../channelNumbers.js";
 import { FallbackPicker } from "../FallbackPicker.js";
+import { navigate } from "../nav.js";
 import { api, type NextConfig, type ChannelSummary, type ApplyResult, type NextRunnerStatus, type UpdateStatus } from "../api.js";
 
 const PHASE_COLOR: Record<string, string> = { running: "#22c55e", waiting: "#f59e0b", starting: "#f59e0b", crashed: "#ef4444", stopped: "#64748b" };
@@ -303,6 +304,7 @@ export function Streaming() {
         Adds a scrolling TV guide as its own channel, like the old cable preview channels: your channels down the side,
         half-hour columns across, a clock at the top and background music. It's drawn live from every channel's guide.
         To set it up, tick <b>Enable guide channel</b>, click <b>Apply</b> to add it to the lineup, then build playouts.
+        {" "}<button className="ghost" onClick={() => navigate("troubleshoot", { tab: "play", guide: "1" })} title="Play the guide in a temporary ErsatzTV next, with these settings (save them first)">Test the guide →</button>
       </p>
       {guideCheck && (guideCheck.drawtext
         ? <p className="muted" style={{ fontSize: 12 }}>✓ Your ffmpeg can draw the guide.</p>

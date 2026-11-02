@@ -4,6 +4,7 @@
 // -----------------------------------------------------------------------------
 import { mkdir, writeFile, readdir, readFile, unlink } from "node:fs/promises";
 import { join, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { ConfigStore, NextConfig, ChannelMeta } from "./config.js";
 import type { UpNextOptions } from "../engine.js";
@@ -254,8 +255,43 @@ export async function writeGuidePlayout(store: ConfigStore, root: string, startM
   if (!g.enabled) return null;
   const runtimeDir = abs(root, cfg.runtimeDir);
   const dir = join(runtimeDir, "playouts", "guide");
-  const cliPath = join(root, "dist", "cli.js");
   const stepMs = Math.max(1, g.refreshMin || 30) * 60_000;
+  const guideConfigPath = await writeGuideConfig(store, root, tz);
+  const items: PlayoutItem[] = [];
+  let id = 1;
+  for (let t = startMs; t < finishMs; t += stepMs) {
+    const end = Math.min(t + stepMs, finishMs);
+    items.push({ id: String(id++), start: formatRfc3339(t, tz), finish: formatRfc3339(end, tz), source: guideSource(store, root, guideConfigPath) });
+  }
+  const playout: Playout = { version: PLAYOUT_VERSION, generated_at: new Date().toISOString(), items };
+  return writePlayout(dir, playout, startMs, finishMs, tz);
+}
+
+/** The CLI that streams the guide: dist/cli.js, next to this module's folder. */
+export const GUIDE_CLI = fileURLToPath(new URL("../cli.js", import.meta.url));
+
+/** The `script` source that streams the guide (a `guide-stream` CLI run). */
+export function guideSource(store: ConfigStore, root: string, guideConfigPath: string): PlayoutItem["source"] {
+  const cfg = store.getNextConfig();
+  return {
+    source_type: "script",
+    command: process.execPath,
+    args: [GUIDE_CLI, "guide-stream", "--config", guideConfigPath],
+    is_live: true,
+    probe_hint: {
+      format_name: "mpegts",
+      video: [{ stream_index: 0, codec: "h264", width: cfg.video.width, height: cfg.video.height, pix_fmt: "yuv420p" }],
+      audio: [{ stream_index: 1, codec: "aac", channels: 2 }],
+    },
+  } as PlayoutItem["source"];
+}
+
+/** Write the guide-stream's config snapshot (by default runtime/guide-config.json;
+ *  Troubleshooting writes its own copy with its own log file). */
+export async function writeGuideConfig(store: ConfigStore, root: string, tz: Tz, at?: { configPath: string; logFile: string }): Promise<string> {
+  const cfg = store.getNextConfig();
+  const g = cfg.guide;
+  const runtimeDir = abs(root, cfg.runtimeDir);
 
   // Snapshot everything the spawned guide-stream needs, so it never opens
   // app.sqlite (avoids a second DB handle while the server holds it open).
@@ -275,40 +311,19 @@ export async function writeGuidePlayout(store: ConfigStore, root: string, startM
       if (address) sources[String(s.sourceId)] = { address: address.replace(/\/+$/, ""), token: s.token };
     }
   } catch { /* no remote sources */ }
-  const guideConfigPath = join(runtimeDir, "guide-config.json");
+  const guideConfigPath = at?.configPath ?? join(runtimeDir, "guide-config.json");
   await writeFile(guideConfigPath, JSON.stringify({
     channels, xmltvDir: join(runtimeDir, "xmltv"), tz,
     width: cfg.video.width, height: cfg.video.height, fps: "24",
     columns: g.columns, scrollSpeed: g.scrollSpeed, promoRotateSec: g.promoRotateSec,
-    ffmpegPath: cfg.ffmpegPath, ffprobePath: cfg.ffprobePath, fontFile: cfg.upNext.fontFile, musicFolder: g.musicFolder,
+    // (absolute: the stream runs in whatever folder next was started from)
+    ffmpegPath: cfg.ffmpegPath ? abs(root, cfg.ffmpegPath) : "", ffprobePath: cfg.ffprobePath ? abs(root, cfg.ffprobePath) : "", fontFile: cfg.upNext.fontFile, musicFolder: g.musicFolder,
     promoFolder: g.promoFolder, sources,
     // themeId + dir so the stream reloads the theme file live (edits apply without
     // a full rebuild); `theme` is the snapshot fallback if the file is unreadable.
     themeId: g.theme || "classic", guideThemesDir: join(runtimeDir, "guide-themes"),
-    logFile: join(runtimeDir, "guide.log"),
+    logFile: at?.logFile ?? join(runtimeDir, "guide.log"),
     theme,
   }, null, 2), "utf8");
-  const items: PlayoutItem[] = [];
-  let id = 1;
-  for (let t = startMs; t < finishMs; t += stepMs) {
-    const end = Math.min(t + stepMs, finishMs);
-    items.push({
-      id: String(id++),
-      start: formatRfc3339(t, tz),
-      finish: formatRfc3339(end, tz),
-      source: {
-        source_type: "script",
-        command: process.execPath,
-        args: [cliPath, "guide-stream", "--config", guideConfigPath],
-        is_live: true,
-        probe_hint: {
-          format_name: "mpegts",
-          video: [{ stream_index: 0, codec: "h264", width: cfg.video.width, height: cfg.video.height, pix_fmt: "yuv420p" }],
-          audio: [{ stream_index: 1, codec: "aac", channels: 2 }],
-        },
-      },
-    });
-  }
-  const playout: Playout = { version: PLAYOUT_VERSION, generated_at: new Date().toISOString(), items };
-  return writePlayout(dir, playout, startMs, finishMs, tz);
+  return guideConfigPath;
 }

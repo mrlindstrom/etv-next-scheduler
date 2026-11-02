@@ -107,7 +107,7 @@ export interface TroubleSystem {
   streaming: { codec: string; accel: string; accelLabel: string; encoder: string; size: string; bitrateKbps: number; audio: string };
 }
 export interface HwTestResult { accel: string; label: string; codec: string; encoder: string; ok: boolean; ms: number; error?: string; current: boolean; }
-export interface TestRequest { kind: "item" | "upnext" | "playout"; file?: string; itemId?: string; forceOverlay?: string; lead?: number; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
+export interface TestRequest { kind: "item" | "upnext" | "playout" | "guide"; file?: string; itemId?: string; forceOverlay?: string; lead?: number; type?: string; id?: number; startSec?: number; at?: number; theme?: string; channel?: string; overlays?: boolean; durationSec?: number; accel?: string; }
 export interface TestRun {
   id: string; label: string; status: "starting" | "running" | "finishing" | "done" | "failed" | "stopped"; message: string; startedAt: number; finishedAt?: number;
   request: TestRequest; accel: string; encoder: string; port: number; targetSec: number; capturedSec: number; firstSegmentSec?: number; speed?: number;

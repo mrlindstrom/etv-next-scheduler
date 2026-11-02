@@ -22,7 +22,7 @@ import { cpus, totalmem, release, platform, arch } from "node:os";
 import { basename, extname, isAbsolute, join } from "node:path";
 import type { ConfigStore, NextConfig } from "./config.js";
 import type { NextRunner } from "./next-runner.js";
-import { channelConfigJson, upNextOptionsFor } from "./nextgen.js";
+import { channelConfigJson, upNextOptionsFor, writeGuideConfig, guideSource, GUIDE_CLI } from "./nextgen.js";
 import { upcoming } from "./graphics.js";
 import { loadTheme } from "./upnext-themes.js";
 import { itemDetail } from "./library-browse.js";
@@ -116,7 +116,7 @@ const encoderFor = (codec: string, accel: string) => {
 
 // ---- test plays ----------------------------------------------------------------
 export interface TestRequest {
-  kind: "item" | "upnext" | "playout";
+  kind: "item" | "upnext" | "playout" | "guide";     // "guide": the scrolling guide channel
   file?: string; itemId?: string;                    // kind "playout": a channel's built playout file + item id
   forceOverlay?: string; lead?: number;              // kind "playout": preview this overlay on the item, `lead` s after the start point
   type?: string; id?: number; startSec?: number;   // kind "item"
@@ -451,6 +451,16 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       mkItem = (t) => ({ ...clone(src), id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + lenSec * 1000, tz) });
       label = `${req.channel} · ${path ? basename(path).replace(/\.[^.]+$/, "") : "item"}${overlayNote ? ` · ${overlayNote}` : ""}`;
       sourcePath = path;
+    } else if (req.kind === "guide") {
+      // the guide channel, streamed live by the same script its channel uses
+      // (works before the guide is switched on, so it can be tried first)
+      if (!existsSync(GUIDE_CLI)) throw new Error("The guide needs the built scheduler (dist/cli.js). Run npm run build.");
+      await mkdir(testsDir(), { recursive: true });
+      const configPath = await writeGuideConfig(store, root, tz, { configPath: join(testsDir(), "guide-config.json"), logFile: join(testsDir(), "guide.log") });
+      targetSec = Math.min(Math.max(5, Number(req.durationSec) || 30), 300);
+      const source = guideSource(store, root, configPath);
+      mkItem = (t) => ({ id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + (targetSec + 60) * 1000, tz), source: clone(source) });
+      label = `Guide channel · ${cfg.guide.theme || "classic"} theme`;
     } else {
       const d = itemDetail(ctx.libDb(), String(req.type), Number(req.id));
       if (!d?.path) throw new Error("Pick an item from the library first.");
@@ -589,8 +599,9 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
           const t = line.match(/^#EXT-X-PROGRAM-DATE-TIME:(.+)$/); if (t) { pdt = Date.parse(t[1].replace(/([+-]\d{2})(\d{2})$/, "$1:$2")); continue; }
           if (/^live\d+\.ts$/.test(line.trim()) && !segs.has(line.trim()) && dur) {
             const name = line.trim();
-            // only segments of the test item (the lead-in is dropped by time)
-            if (pdt >= T0 - 100 && pdt < T0 + r.targetSec * 1000) {
+            // only segments of the test item (the lead-in is dropped by time); the
+            // live guide starts several seconds late, so its whole item counts
+            if (pdt >= T0 - 100 && pdt < T0 + (r.request.kind === "guide" ? r.targetSec + 60 : r.targetSec) * 1000) {
               await copyFile(join(outDir, name), join(dir, "kept", name)).catch(() => {});
               if (existsSync(join(dir, "kept", name))) {
                 segs.set(name, { name, startMs: pdt, durSec: dur, arrivedMs: Date.now(), workAhead: /WorkAhead/.test(sessionState) });
