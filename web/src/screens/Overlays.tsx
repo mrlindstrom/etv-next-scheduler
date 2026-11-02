@@ -30,7 +30,7 @@ const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
-const fill = (t: string, v: Record<string, string>) => t.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (m, k: string) => v[k.toLowerCase()] ?? m);
+const fill = (t: string, v: Record<string, string>) => t.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, k: string) => v[k.toLowerCase()] ?? m);
 const LAYER_LABEL: Record<Layer["type"], string> = { text: "Text", image: "Image", box: "Box", video: "Video" };
 const LAYER_ICON: Record<Layer["type"], string> = { text: "T", image: "▣", box: "■", video: "▶" };
 

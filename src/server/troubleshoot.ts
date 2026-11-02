@@ -29,7 +29,7 @@ import { itemDetail } from "./library-browse.js";
 import { getResolver } from "./resolverCache.js";
 import { upNextItem, type UpNextOptions } from "../engine.js";
 import { applyLanguageTracks } from "../lang.js";
-import { applyOverlays } from "../overlays.js";
+import { applyOverlays, UPCOMING_FIELDS } from "../overlays.js";
 import { overlayOptionsFor, overlayLibrary } from "./overlay-library.js";
 import { inSeason } from "../overlays.js";
 import { holidayDate } from "../holidays.js";
@@ -439,9 +439,10 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         const s0 = Date.parse(src.start), s1 = Date.parse(src.finish);
         const rows = await upcoming(xmltvFor(String(req.channel)), tz, s0 - 12 * 3_600_000, 600);
         const ci = rows.reduce((k, r, i) => (r.epochMs <= s0 + 1000 ? i : k), -1);
-        const cur = ci >= 0 ? rows[ci] : undefined, nxt = rows[ci + 1];
+        const cur = ci >= 0 ? rows[ci] : undefined;
+        const later = rows.slice(ci + 1, ci + 1 + UPCOMING_FIELDS); // next, then the ones after it
         const guide = [{ startMs: s0, stopMs: s1, item: { id: "0", path: path ?? "", durationMs: s1 - s0, chapters: [], title: "", showTitle: cur?.title ?? "" } as any },
-          ...(nxt ? [{ startMs: nxt.epochMs, stopMs: nxt.epochMs + 1800_000, item: { id: "1", path: "", durationMs: 1800_000, chapters: [], title: "", showTitle: nxt.title } as any }] : [])];
+          ...later.map((n, k) => ({ startMs: n.epochMs, stopMs: (later[k + 1]?.epochMs ?? n.epochMs + 1800_000), item: { id: String(k + 1), path: "", durationMs: 1800_000, chapters: [], title: "", showTitle: n.title } as any }))];
         const probe: PlayoutItem = { id: "2", start: src.start, finish: src.finish, source: src.source };
         const r = await applyOverlays([probe], new Map([["2", ["__preview"]]]), {}, guide, tz, { ...overlayOptionsFor(store, String(req.channel), root), library: [preview as any] });
         if (!probe.graphics?.length) throw new Error(`The overlay couldn't be drawn${r.problems.length ? `: ${r.problems.join("; ")}` : ""}.`);

@@ -110,6 +110,12 @@ export const OVERLAY_FIELDS: { key: string; label: string; sample: string }[] = 
   { key: "next_show", label: "Next show", sample: "Doug" },
   { key: "next_title", label: "Next episode / movie title", sample: "Doug's Big Feat" },
   { key: "next_start_time", label: "Next start time", sample: "8:00 PM" },
+  { key: "next2_show", label: "Show after next", sample: "Hey Arnold!" },
+  { key: "next2_title", label: "Show after next: episode / movie title", sample: "Arnold's Hat" },
+  { key: "next2_start_time", label: "Show after next: start time", sample: "8:30 PM" },
+  { key: "next3_show", label: "Third show from now", sample: "Rocko's Modern Life" },
+  { key: "next3_title", label: "Third show from now: episode / movie title", sample: "Trash-O-Madness" },
+  { key: "next3_start_time", label: "Third show from now: start time", sample: "9:00 PM" },
   { key: "channel", label: "Channel name", sample: "Nickelodeon" },
   { key: "number", label: "Channel number", sample: "21" },
 ];
@@ -117,11 +123,23 @@ export const OVERLAY_FIELDS: { key: string; label: string; sample: string }[] = 
 export type OverlayVars = Record<string, string>;
 export const sampleVars = (): OverlayVars => Object.fromEntries(OVERLAY_FIELDS.map((f) => [f.key, f.sample]));
 
-/** The template values for an item: the programme airing and the next one. */
-export function overlayVars(cur: GuideEntry | undefined, next: GuideEntry | undefined, tz: Tz, ch: { name?: string; number?: string }): OverlayVars {
-  const it = cur?.item, nx = next?.item;
+/** How many upcoming programmes the templates can name (next_, next2_, next3_…). */
+export const UPCOMING_FIELDS = 3;
+
+/** The template values for an item: the programme airing and the ones after it
+ *  (`upcoming[0]` is next; later ones fill next2_*, next3_*). */
+export function overlayVars(cur: GuideEntry | undefined, upcoming: (GuideEntry | undefined)[], tz: Tz, ch: { name?: string; number?: string }): OverlayVars {
+  const it = cur?.item, next = upcoming[0], nx = next?.item;
   const pad = (n?: number) => (n == null ? "" : String(n).padStart(2, "0"));
+  const later: OverlayVars = {};
+  for (let k = 2; k <= UPCOMING_FIELDS; k++) {
+    const e = upcoming[k - 1];
+    later[`next${k}_show`] = e ? e.item.showTitle || e.item.title || "" : "";
+    later[`next${k}_title`] = e?.item.title ?? "";
+    later[`next${k}_start_time`] = e ? formatClock(e.startMs, tz) : "";
+  }
   return {
+    ...later,
     show: it ? it.showTitle || it.title || "" : "",
     title: it?.title ?? "",
     episode_code: it?.season != null && it.episodeNumber != null ? `S${pad(it.season)}E${pad(it.episodeNumber)}` : "",
@@ -139,7 +157,7 @@ export function overlayVars(cur: GuideEntry | undefined, next: GuideEntry | unde
 }
 
 export const fillTemplate = (text: string, v: OverlayVars): string =>
-  String(text ?? "").replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (_, k: string) => v[k.toLowerCase()] ?? "");
+  String(text ?? "").replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, k: string) => v[k.toLowerCase()] ?? "");
 
 // ---- rendering ---------------------------------------------------------------
 const FONT_CANDIDATES = [
@@ -679,7 +697,8 @@ export async function applyOverlays(
     const s = Date.parse(item.start), f = Date.parse(item.finish);
     while (gi < g.length && g[gi].stopMs <= s + SLACK_MS) gi++;
     const cur = gi < g.length && g[gi].startMs <= s + SLACK_MS ? g[gi] : undefined;
-    const next = cur ? g[gi + 1] : g[gi];
+    const n0 = cur ? gi + 1 : gi;
+    const next = Array.from({ length: UPCOMING_FIELDS }, (_, k) => g[n0 + k]);
     const filler = !!labels[item.id]?.fillerKind;
     const layers: GraphicsLayer[] = [];
     let vars: OverlayVars | null = null;

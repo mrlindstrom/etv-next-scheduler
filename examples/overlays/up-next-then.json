@@ -1,7 +1,7 @@
 {
   "category": "Up next",
   "name": "Coming up / Then",
-  "description": "What's on now and next, stacked — near the end of each show.",
+  "description": "The next show and the one after it, stacked — near the end of each show.",
   "timing": {
     "mode": "end",
     "offsetSeconds": 90,
@@ -135,7 +135,7 @@
       "y": 950,
       "w": 590,
       "h": 36,
-      "text": "Stay tuned on {{channel}}",
+      "text": "Then: {{next2_show}} at {{next2_start_time}}",
       "size": 24,
       "color": "#94a3b8",
       "font": "Segoe UI",
