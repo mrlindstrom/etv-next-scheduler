@@ -5,11 +5,14 @@
 //     to the edges, the centre, the safe area and each other (hold Alt to stop)
 //   - text can use show fields ({{show}}, {{next_start_time}}…) — click a field
 //     to insert it; the canvas shows sample values
+//   - a "Picture by show" layer picks a picture from the pictures folder by a
+//     show detail (match:{{next_show}}) — see OverlayPictures.tsx
 //   - "When it shows" sets the timing in plain words; "Show on channels" puts it
 //     on channels right here
 // Builds render each overlay per programme (see src/overlays.ts).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, overlayAssetSrc, CHANNEL_LOGO, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
+import { api, overlayAssetSrc, CHANNEL_LOGO, MATCH_PREFIX, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
+import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { navigate } from "../nav.js";
 import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, animLengths, isAnimated, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
 
@@ -106,6 +109,7 @@ const mediaSize = (src: string, video: boolean): Promise<{ w: number; h: number 
 export function Overlays() {
   const [list, setList] = useState<Overlay[] | null>(null);
   const [fields, setFields] = useState<OverlayField[]>([]);
+  const [slots, setSlots] = useState<string[]>(["Now", "Next", "After next", "Third"]);
   const [usedBy, setUsedBy] = useState<Record<string, string[]>>({});
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [editing, setEditing] = useState<Overlay | null>(null);
@@ -126,13 +130,13 @@ export function Overlays() {
   const load = useCallback(async () => {
     try {
       const r = await api.overlays();
-      setList(r.overlays); setFields(r.fields); setUsedBy(r.usedBy);
+      setList(r.overlays); setFields(r.fields); setUsedBy(r.usedBy); if (r.slots?.length) setSlots(r.slots);
       api.channels().then(setChannels).catch(() => {});
     } catch (e) { setError(String(e)); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (editing) return <Designer key={editing.id || "new"} initial={editing} fields={fields} channels={channels} usedBy={usedBy}
+  if (editing) return <Designer key={editing.id || "new"} initial={editing} fields={fields} slots={slots} channels={channels} usedBy={usedBy}
     onClose={() => { setEditing(null); load(); }} onSaved={(o) => { setEditing(o); load(); }} onChannels={load} />;
 
   return (
@@ -186,6 +190,7 @@ export function Overlays() {
           ))}
         </div>
       )}
+      {list && <div style={{ marginTop: 18 }}><PicturesCard /></div>}
     </div>
   );
 }
@@ -209,8 +214,8 @@ function Thumb({ o, vars }: { o: Overlay; vars: Record<string, string> }) {
 }
 
 // ---- designer -----------------------------------------------------------------
-function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChannels }: {
-  initial: Overlay; fields: OverlayField[]; channels: ChannelSummary[]; usedBy: Record<string, string[]>;
+function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, onChannels }: {
+  initial: Overlay; fields: OverlayField[]; slots: string[]; channels: ChannelSummary[]; usedBy: Record<string, string[]>;
   onClose: () => void; onSaved: (o: Overlay) => void; onChannels: () => void;
 }) {
   const [ov, setOv] = useState<Overlay>(initial);
@@ -248,6 +253,7 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
   const textRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const vars = useMemo(() => Object.fromEntries(fields.map((f) => [f.key, f.sample])), [fields]);
+  const [fieldSlot, setFieldSlot] = useState(1); // the show details list: which programme (0 = now, 1 = next…)
 
   // stage scale follows its width
   useEffect(() => {
@@ -322,6 +328,12 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
   /** Insert a {{field}} into the selected text layer at the cursor (or a new text layer). */
   const insertField = (key: string) => {
     const token = `{{${key}}}`;
+    const cur = sel != null ? ov.layers[sel] : null;
+    if (cur && (cur.type === "image" || cur.type === "video") && cur.src.startsWith(MATCH_PREFIX)) {
+      const name = cur.src.slice(MATCH_PREFIX.length);
+      setLayer(sel!, { src: MATCH_PREFIX + (name && !/\s$/.test(name) ? `${name} ` : name) + token } as Partial<Layer>);
+      return;
+    }
     if (sel == null || ov.layers[sel]?.type !== "text") { addText(token); return; }
     const l = ov.layers[sel] as Extract<Layer, { type: "text" }>;
     const ta = textRef.current;
@@ -476,6 +488,7 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
             <button onClick={() => fileRef.current?.click()} disabled={busy}>▣ Image or video</button>
             <button onClick={addBox}>■ Box</button>
             <button onClick={() => addLayer({ type: "image", src: CHANNEL_LOGO, x: 1600, y: 860, w: 220, h: 220 })} title="Each channel shows its own logo here">◎ Channel logo</button>
+            <button onClick={() => addLayer({ type: "image", src: `${MATCH_PREFIX}{{next_show}}`, x: 1180, y: 700, w: 400, h: 225 })} title="A picture from the pictures folder, picked by a show detail (e.g. the next show's name)">🖼 Picture by show</button>
             <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) addFile(f); e.target.value = ""; }} />
             <span className="ov-tb-sep" />
             <label className="ov-inline"><input type="checkbox" checked={showSamples} onChange={(e) => setShowSamples(e.target.checked)} /> Sample values</label>
@@ -614,7 +627,7 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
                     onDrop={(e) => { e.preventDefault(); const from = Number(e.dataTransfer.getData("text/ov-layer")); if (Number.isFinite(from)) moveLayer(from, i); }}>
                     <span className="ov-grip" title="Drag to reorder">⠿</span>
                     <span className="ov-licon">{LAYER_ICON[l.type]}</span>
-                    <span className="ov-lname">{l.type === "text" ? (l.text || "Text").slice(0, 28) : (l.type === "image" || l.type === "video") ? `${LAYER_LABEL[l.type]} · ${l.src === CHANNEL_LOGO ? "channel logo" : l.src.replace(/^(example:|assets\/)/, "").replace(/\.[a-z0-9]+$/i, "").slice(0, 18)}` : LAYER_LABEL[l.type]}</span>
+                    <span className="ov-lname">{l.type === "text" ? (l.text || "Text").slice(0, 28) : (l.type === "image" || l.type === "video") ? `${LAYER_LABEL[l.type]} · ${l.src === CHANNEL_LOGO ? "channel logo" : l.src.startsWith(MATCH_PREFIX) ? `by ${l.src.slice(MATCH_PREFIX.length)}`.slice(0, 24) : l.src.replace(/^(example:|assets\/)/, "").replace(/\.[a-z0-9]+$/i, "").slice(0, 18)}` : LAYER_LABEL[l.type]}</span>
                     <button className="ghost" title="Bring forward" onClick={(e) => { e.stopPropagation(); moveLayer(i, i + 1); }}>↑</button>
                     <button className="ghost" title="Send backward" onClick={(e) => { e.stopPropagation(); moveLayer(i, i - 1); }}>↓</button>
                     <button className="ghost" title="Delete" onClick={(e) => { e.stopPropagation(); removeLayer(i); }}>✕</button>
@@ -624,13 +637,17 @@ function Designer({ initial, fields, channels, usedBy, onClose, onSaved, onChann
             )}
           </div>
 
-          {L && sel != null && <LayerProps l={L} i={sel} setLayer={setLayer} textRef={textRef} onReplace={(f) => replaceFile(sel, f)} onDuplicate={() => duplicate(sel)} onDelete={() => removeLayer(sel)} />}
+          {L && sel != null && <LayerProps l={L} i={sel} setLayer={setLayer} textRef={textRef} onReplace={(f) => replaceFile(sel, f)} onDuplicate={() => duplicate(sel)} onDelete={() => removeLayer(sel)} fields={fields} slots={slots} vars={vars} />}
 
           <div className="meta-card">
             <b>Show details you can use</b>
-            <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>Click one to add it to {L?.type === "text" ? "the selected text" : "a new text layer"}. Each show fills in its own.</p>
+            <p className="muted" style={{ margin: "2px 0 8px", fontSize: 12 }}>Click one to add it to {L?.type === "text" ? "the selected text" : (L?.type === "image" || L?.type === "video") && L.src.startsWith(MATCH_PREFIX) ? "the selected picture's name" : "a new text layer"}. Each show fills in its own.</p>
+            <div className="ov-seg" style={{ flexWrap: "wrap", marginBottom: 6 }}>
+              {slots.map((s, k) => <button key={s} className={fieldSlot === k ? "active" : ""} onClick={() => setFieldSlot(k)}>{s}</button>)}
+              <button className={fieldSlot === -1 ? "active" : ""} onClick={() => setFieldSlot(-1)}>Channel</button>
+            </div>
             <div className="ov-fields">
-              {fields.map((f) => (
+              {fields.filter((f) => (f.slot ?? -1) === fieldSlot).map((f) => (
                 <button key={f.key} className="ov-field" onClick={() => insertField(f.key)} title={`{{${f.key}}}`}>
                   <span>{f.label}</span><span className="muted">{f.sample}</span>
                 </button>
@@ -657,6 +674,7 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
   const pos: React.CSSProperties = inner ? { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" } : { position: "absolute", left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale };
   const op = l.opacity != null && l.opacity < 100 ? l.opacity / 100 : undefined;
   if (l.type === "box") return <div style={{ ...pos, background: l.color || "#000", borderRadius: (l.radius ?? 0) * scale, opacity: op, border: l.borderWidth ? `${l.borderWidth * scale}px solid ${l.border || "#fff"}` : undefined, boxSizing: "border-box" }} />;
+  if ((l.type === "image" || l.type === "video") && l.src.startsWith(MATCH_PREFIX)) return <MatchImage src={l.src} fallback={l.fallback} vars={vars} video={l.type === "video"} style={{ ...pos, opacity: op, pointerEvents: "none" }} />;
   if (l.type === "image") return <img src={overlayAssetSrc(l.src)} draggable={false} alt="" style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
   if (l.type === "video") return <video src={overlayAssetSrc(l.src)} muted loop autoPlay playsInline style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
   let text = fill(l.text ?? "", vars);
@@ -679,9 +697,10 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
   );
 }
 
-function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete }: {
+function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete, fields, slots, vars }: {
   l: Layer; i: number; setLayer: (i: number, p: Partial<Layer>) => void; textRef: React.RefObject<HTMLTextAreaElement>;
   onReplace: (f: File) => void; onDuplicate: () => void; onDelete: () => void;
+  fields: OverlayField[]; slots: string[]; vars: Record<string, string>;
 }) {
   const set = (p: Record<string, unknown>) => setLayer(i, p as Partial<Layer>);
   const n = (k: string, label: string, min = 0, step = 1) => (
@@ -691,7 +710,7 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete 
   return (
     <div className="meta-card ov-props">
       {l.type === "image" && l.src === CHANNEL_LOGO && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Each channel fills this in with its own logo (set on the channel's settings).</p>}
-      <div className="pane-head"><b>{LAYER_LABEL[l.type]}</b><span><button className="ghost" onClick={onDuplicate} title="Duplicate (Ctrl+D)">Duplicate</button><button className="ghost" onClick={onDelete}>Delete</button></span></div>
+      <div className="pane-head"><b>{(l.type === "image" || l.type === "video") && l.src.startsWith(MATCH_PREFIX) ? `${LAYER_LABEL[l.type]} by show` : LAYER_LABEL[l.type]}</b><span><button className="ghost" onClick={onDuplicate} title="Duplicate (Ctrl+D)">Duplicate</button><button className="ghost" onClick={onDelete}>Delete</button></span></div>
       {l.type === "text" && (
         <>
           <label>Text
@@ -735,7 +754,10 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete 
           </div>
         </>
       )}
-      {(l.type === "image" || l.type === "video") && (
+      {(l.type === "image" || l.type === "video") && l.src.startsWith(MATCH_PREFIX) && (
+        <MatchProps src={l.src} fallback={l.fallback} kind={l.type} fields={fields} slots={slots} vars={vars} set={(p) => set(p)} />
+      )}
+      {(l.type === "image" || l.type === "video") && !l.src.startsWith(MATCH_PREFIX) && (
         <>
           <button onClick={() => replaceRef.current?.click()}>Replace {l.type}…</button>
           <input ref={replaceRef} type="file" accept={l.type === "image" ? "image/*" : "video/*"} hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onReplace(f); e.target.value = ""; }} />

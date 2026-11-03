@@ -1,5 +1,5 @@
 // Typed API client for the Fastify backend.
-export interface AppConfig { etvDbPath: string; channelsDir: string; outputDir: string; timeZone: string; tz?: string | number; days: number; autoBuild: boolean; buildIntervalMin: number; refreshThresholdHours: number; prunePast: boolean; includeSpecials: boolean; autoScanHours: number; keepNextRunning: boolean; legacyImport: boolean; selfUpdate?: "off" | "notify" | "install"; selfUpdateHour?: number; }
+export interface AppConfig { etvDbPath: string; channelsDir: string; outputDir: string; timeZone: string; tz?: string | number; days: number; autoBuild: boolean; buildIntervalMin: number; refreshThresholdHours: number; prunePast: boolean; includeSpecials: boolean; autoScanHours: number; keepNextRunning: boolean; legacyImport: boolean; selfUpdate?: "off" | "notify" | "install"; selfUpdateHour?: number; overlayPicturesDir?: string; }
 export interface GitCommit { sha: string; subject: string; date: string }
 export interface SelfUpdateStatus { available: boolean; reason: string | null; branch: string; upstream: string; current: GitCommit | null; behind: number; ahead: number; commits: GitCommit[]; blocked: string[]; checkedAt: number | null; checkError: string | null; underLauncher: boolean; bootId: string; staged: boolean; job: { phase: "running" | "restarting" | "staged" | "failed"; step: string; log: string[]; startedAt: number } | null; }
 export interface UpdateComponent { id: "next" | "ffmpeg"; label: string; path: string; found: boolean; installed: string | null; latest: { tag: string; publishedAt: string; pageUrl: string; asset: string | null; size: number } | null; updateAvailable: boolean; note: string | null; }
@@ -21,20 +21,31 @@ import type { LayerAnim } from "../../src/overlay-anim.js";
 export type { LayerAnim } from "../../src/overlay-anim.js";
 interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
 export type OverlayLayer =
-  | (OvBox & { type: "image"; src: string })
+  | (OvBox & { type: "image"; src: string; fallback?: string })
   | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
   | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
-  | (OvBox & { type: "video"; src: string });
+  | (OvBox & { type: "video"; src: string; fallback?: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number }
 export type OverlayLocation = "top_left" | "top_center" | "top_right" | "center_left" | "center" | "center_right" | "bottom_left" | "bottom_center" | "bottom_right";
 export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
 export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }
 export interface OverlayMoment { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }
-export interface OverlayField { key: string; label: string; sample: string }
+export interface OverlayField { key: string; label: string; sample: string; slot?: number }
 /** Where an overlay asset (`assets/<file>`, or an absolute path on the server) shows in the browser. */
 export const CHANNEL_LOGO = "channel-logo";
 const LOGO_PLACEHOLDER = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect x="6" y="6" width="388" height="388" rx="40" fill="rgba(79,140,255,.25)" stroke="#4f8cff" stroke-width="8" stroke-dasharray="24 14"/><text x="200" y="185" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">CHANNEL</text><text x="200" y="260" font-family="Arial" font-weight="700" font-size="64" fill="#fff" text-anchor="middle">LOGO</text></svg>');
-export const overlayAssetSrc = (src: string): string => (src === CHANNEL_LOGO ? LOGO_PLACEHOLDER : src.startsWith("assets/") ? `/overlay-assets/${src.slice(7)}` : src.startsWith("example:") ? `/overlay-examples/${src.slice(8)}` : "");
+export const overlayAssetSrc = (src: string): string => (src === CHANNEL_LOGO ? LOGO_PLACEHOLDER : src.startsWith("assets/") ? `/overlay-assets/${src.slice(7)}` : src.startsWith("example:") ? `/overlay-examples/${src.slice(8)}`
+  : src.startsWith(MATCH_PREFIX) ? `/overlay-pictures/match?name=${encodeURIComponent(src.slice(MATCH_PREFIX.length))}` : "");
+/** A layer source that picks a picture from the pictures folder by the schedule, e.g. `match:{{next_show}}`. */
+export const MATCH_PREFIX = "match:";
+/** A `match:` source filled in with these values (slashes in values dropped, as builds do). */
+export const resolveMatch = (src: string, vars: Record<string, string>): string => {
+  if (!src.startsWith(MATCH_PREFIX)) return src;
+  const t = src.slice(MATCH_PREFIX.length).replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (_, k: string) => String(vars[k.toLowerCase()] ?? "").replace(/[\\/]+/g, " "));
+  return MATCH_PREFIX + t.trim();
+};
+export interface OverlayPicture { name: string; size: number }
+export interface OverlayPictures { dir: string; isDefault: boolean; files: OverlayPicture[]; truncated: boolean }
 
 export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; repeats?: boolean; ads?: number; }
 export interface ShowIf { key: string; equals: string | string[]; }
@@ -261,7 +272,13 @@ export const api = {
   playout: (channel: string, file: string): Promise<PlayoutView> => fetch(`/api/playouts/${channel}/${file}`).then(j),
   scheduler: (): Promise<SchedulerStatus> => fetch("/api/scheduler").then(j),
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
-  overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
+  overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; slots?: string[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
+  overlayPictures: (): Promise<OverlayPictures> => fetch("/api/overlays/pictures").then(j),
+  uploadOverlayPicture: (file: File, folder = ""): Promise<{ name: string }> =>
+    fetch("/api/overlays/pictures", { method: "POST", headers: { "Content-Type": file.type && /^(image|video)\//.test(file.type) ? file.type : "application/octet-stream", "x-file-name": encodeURIComponent(file.name), "x-folder": encodeURIComponent(folder) }, body: file }).then(j),
+  deleteOverlayPicture: (name: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/pictures?name=${encodeURIComponent(name)}`, { method: "DELETE" }).then(j),
+  matchOverlayPicture: (name: string, kind: "image" | "video" = "image"): Promise<{ name: string; file: string | null }> =>
+    fetch(`/api/overlays/pictures/match?name=${encodeURIComponent(name)}&kind=${kind}`).then(j),
   overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
   overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string; outOfSeason?: { id: string; name: string; when: string }[]; programmes?: { file: string; itemId: string; itemStart: number; path: string }[] }> =>
     fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),

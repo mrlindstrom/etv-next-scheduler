@@ -12,7 +12,9 @@ from your media library, along with the TV guide, and runs next for you.
 - **Media library**: Plex, Jellyfin and Emby servers, plus local folders. It can
   also import an existing ErsatzTV (legacy) database and its channels.
 - **Overlays**: a drag-and-drop designer for watermarks, lower thirds and "up next"
-  straps, with show details (title, episode, times, what's next) and timing
+  straps, with show details (title, episode, times, what's next), pictures
+  picked by the show (a folder of show logos: `Rugrats.png` appears when Rugrats
+  is next), and timing
   (always, every few minutes, or at a set point in each show).
 - **Ways to schedule a channel**: a block schedule, a weekly grid, commercial-break
   pods, movie channels, legacy-style YAML, a time-shifted copy of another channel,

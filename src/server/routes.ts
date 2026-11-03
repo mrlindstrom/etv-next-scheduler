@@ -36,8 +36,8 @@ import { indexService } from "./index-service.js";
 import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
 import { SqliteResolver } from "../sqlite-resolver.js";
-import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES } from "./overlay-library.js";
-import { OVERLAY_FIELDS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, type Overlay } from "../overlays.js";
+import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile } from "./overlay-library.js";
+import { OVERLAY_FIELDS, OVERLAY_SLOTS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, findPicture, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
 import { compareChannelNumbers } from "../channel-numbers.js";
@@ -873,7 +873,7 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   app.get("/api/overlays", async () => {
     const usedBy: Record<string, string[]> = {};
     for (const m of store.channelMetas()) for (const id of m.overlays ?? []) (usedBy[id] ??= []).push(m.name);
-    return { overlays: store.listOverlays(), fields: OVERLAY_FIELDS, usedBy };
+    return { overlays: store.listOverlays(), fields: OVERLAY_FIELDS, slots: OVERLAY_SLOTS.map((s) => s.label), usedBy };
   });
   app.post("/api/overlays", async (req, reply) => {
     const o = (req.body ?? {}) as Overlay;
@@ -904,12 +904,52 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     reply.header("content-type", type).header("cache-control", "public, max-age=604800, immutable"); // content-addressed
     return reply.send(await readFile(p));
   });
+  // --- the pictures folder: pictures layers pick by the schedule (match:{{next_show}}) ---
+  const picturesDir = () => overlayPicturesDir(store, ROOT);
+  app.get("/api/overlays/pictures", async () => {
+    const dir = picturesDir();
+    return { dir, isDefault: !store.get().overlayPicturesDir?.trim(), ...listPictures(dir) };
+  });
+  // raw file body; x-file-name keeps the name people gave it (that's what layers match)
+  app.post("/api/overlays/pictures", async (req, reply) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) { reply.code(400); return { error: "Send the picture file as the request body." }; }
+    try {
+      const name = await savePicture(picturesDir(), req.body, decodeURIComponent(String(req.headers["x-file-name"] ?? "")), decodeURIComponent(String(req.headers["x-folder"] ?? "")));
+      return { name };
+    } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  app.delete("/api/overlays/pictures", async (req, reply) => {
+    const p = pictureFile(picturesDir(), String((req.query as any).name ?? ""));
+    if (!p || !existsSync(p)) { reply.code(404); return { error: "No such picture." }; }
+    await unlink(p);
+    return { ok: true };
+  });
+  // which file a name picks (the designer's "with the sample values…" check)
+  app.get("/api/overlays/pictures/match", async (req) => {
+    const q = req.query as { name?: string; kind?: string };
+    const dir = picturesDir();
+    const hit = findPicture(String(q.name ?? ""), q.kind === "video" ? "video" : "image", dir);
+    return { name: String(q.name ?? ""), file: hit ? hit.slice(dir.length + 1).replace(/\\/g, "/") : null };
+  });
+  const sendPicture = async (reply: any, p: string | null) => {
+    if (!p || !existsSync(p)) return reply.code(404).send();
+    const ext = p.split(".").pop()!.toLowerCase();
+    const type = ({ mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska" } as Record<string, string>)[ext] ?? logoContentType(p);
+    reply.header("content-type", type).header("cache-control", "no-cache");
+    return reply.send(await readFile(p));
+  };
+  app.get("/overlay-pictures/file", async (req, reply) => sendPicture(reply, pictureFile(picturesDir(), String((req.query as any).name ?? ""))));
+  app.get("/overlay-pictures/match", async (req, reply) => {
+    const q = req.query as { name?: string; kind?: string };
+    return sendPicture(reply, findPicture(String(q.name ?? ""), q.kind === "video" ? "video" : "image", picturesDir()) || null);
+  });
   // exactly what a build draws for the still layers (server fonts), with sample
   // or given template values; PNG cropped to the layers, plus where it sits
   app.post("/api/overlays/render", async (req, reply) => {
     const body = (req.body ?? {}) as { overlay?: Overlay; vars?: Record<string, string> };
     if (!body.overlay?.layers) { reply.code(400); return { error: "Send the overlay to render." }; }
     const dir = overlayAssetsDir(store, ROOT);
+    picturesDir(); // where match: layers look
     const vars = { ...sampleVars(), ...(body.vars ?? {}) };
     await loadRasterizer(); // so text wraps by its measured width
     const s = overlaySvg(body.overlay, vars, (src) => {

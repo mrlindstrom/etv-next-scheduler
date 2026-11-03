@@ -32,7 +32,9 @@ export const ARTBOARD = { w: 1920, h: 1080 };
 
 interface Box { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
 export type OverlayLayer =
-  | (Box & { type: "image"; src: string })
+  // `src` may be `match:<name template>` — a picture in the pictures folder picked
+  // by the schedule (e.g. `match:{{next_show}}`); `fallback` is used when none matches
+  | (Box & { type: "image"; src: string; fallback?: string })
   | (Box & {
       type: "text"; text: string;
       font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean;
@@ -41,7 +43,7 @@ export type OverlayLayer =
       fit?: boolean;   // shrink to fit: keep it on one line, smaller when it's too long for the box
     })
   | (Box & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
-  | (Box & { type: "video"; src: string });
+  | (Box & { type: "video"; src: string; fallback?: string });
 
 export interface OverlayTiming {
   /** always on | every N minutes (wall clock) | N seconds after a programme starts | N seconds before it ends */
@@ -85,6 +87,8 @@ export interface OverlayBuildOptions {
   channelLogo?: string;
   /** shipped example artwork (`example:<file>` sources) */
   examplesDir?: string;
+  /** the pictures folder `match:` sources pick from */
+  picturesDir?: string;
   /** animated overlays: ffmpeg to encode their transition clips, and the output size they're drawn at */
   ffmpeg?: string;
   output?: { w: number; h: number };
@@ -97,25 +101,36 @@ export const setOverlayExamplesDir = (dir: string) => { EXAMPLES_DIR = dir; };
 /** An image layer `src` that stands for each channel's own logo. */
 export const CHANNEL_LOGO = "channel-logo";
 
-/** Template fields an overlay's text can use, for the designer's help. */
-export const OVERLAY_FIELDS: { key: string; label: string; sample: string }[] = [
-  { key: "show", label: "Show (or movie) title", sample: "Rugrats" },
-  { key: "title", label: "Episode / movie title", sample: "Reptar on Ice" },
-  { key: "episode_code", label: "Season & episode", sample: "S03E07" },
-  { key: "season", label: "Season number", sample: "3" },
-  { key: "episode", label: "Episode number", sample: "7" },
-  { key: "year", label: "Year", sample: "1994" },
-  { key: "start_time", label: "Start time", sample: "7:30 PM" },
-  { key: "end_time", label: "End time", sample: "8:00 PM" },
-  { key: "next_show", label: "Next show", sample: "Doug" },
-  { key: "next_title", label: "Next episode / movie title", sample: "Doug's Big Feat" },
-  { key: "next_start_time", label: "Next start time", sample: "8:00 PM" },
-  { key: "next2_show", label: "Show after next", sample: "Hey Arnold!" },
-  { key: "next2_title", label: "Show after next: episode / movie title", sample: "Arnold's Hat" },
-  { key: "next2_start_time", label: "Show after next: start time", sample: "8:30 PM" },
-  { key: "next3_show", label: "Third show from now", sample: "Rocko's Modern Life" },
-  { key: "next3_title", label: "Third show from now: episode / movie title", sample: "Trash-O-Madness" },
-  { key: "next3_start_time", label: "Third show from now: start time", sample: "9:00 PM" },
+/** How many upcoming programmes the templates can name (next_, next2_, next3_…). */
+export const UPCOMING_FIELDS = 3;
+
+/** The programmes templates can name: what's on now, then the ones after it.
+ *  `prefix` goes in front of each detail's key (show, next_show, next2_show…). */
+export const OVERLAY_SLOTS: { prefix: string; label: string }[] = [
+  { prefix: "", label: "Now" }, { prefix: "next_", label: "Next" },
+  { prefix: "next2_", label: "After next" }, { prefix: "next3_", label: "Third" },
+];
+/** The details each programme has. */
+const SLOT_DETAILS: { key: string; label: string }[] = [
+  { key: "show", label: "Show (or movie) title" }, { key: "title", label: "Episode / movie title" },
+  { key: "episode_code", label: "Season & episode" }, { key: "season", label: "Season number" },
+  { key: "episode", label: "Episode number" }, { key: "year", label: "Year" },
+  { key: "kind", label: "Episode or Movie" },
+  { key: "start_time", label: "Start time" }, { key: "end_time", label: "End time" },
+];
+const SAMPLE_SLOTS: Record<string, string>[] = [
+  { show: "Rugrats", title: "Reptar on Ice", episode_code: "S03E07", season: "3", episode: "7", year: "1994", kind: "Episode", start_time: "7:30 PM", end_time: "8:00 PM" },
+  { show: "Doug", title: "Doug's Big Feat", episode_code: "S01E04", season: "1", episode: "4", year: "1991", kind: "Episode", start_time: "8:00 PM", end_time: "8:30 PM" },
+  { show: "Hey Arnold!", title: "Arnold's Hat", episode_code: "S01E10", season: "1", episode: "10", year: "1996", kind: "Episode", start_time: "8:30 PM", end_time: "9:00 PM" },
+  { show: "Rocko's Modern Life", title: "Trash-O-Madness", episode_code: "S01E03", season: "1", episode: "3", year: "1993", kind: "Episode", start_time: "9:00 PM", end_time: "9:30 PM" },
+];
+
+/** Template fields an overlay can use, for the designer's help (`slot` groups
+ *  them: 0 = now, 1 = next…; channel details have none). */
+export const OVERLAY_FIELDS: { key: string; label: string; sample: string; slot?: number }[] = [
+  ...OVERLAY_SLOTS.flatMap((s, k) => SLOT_DETAILS.map((d) => ({
+    key: s.prefix + d.key, label: k ? `${s.label}: ${d.label.charAt(0).toLowerCase()}${d.label.slice(1)}` : d.label, sample: SAMPLE_SLOTS[k][d.key], slot: k,
+  }))),
   { key: "channel", label: "Channel name", sample: "Nickelodeon" },
   { key: "number", label: "Channel number", sample: "21" },
 ];
@@ -123,37 +138,32 @@ export const OVERLAY_FIELDS: { key: string; label: string; sample: string }[] = 
 export type OverlayVars = Record<string, string>;
 export const sampleVars = (): OverlayVars => Object.fromEntries(OVERLAY_FIELDS.map((f) => [f.key, f.sample]));
 
-/** How many upcoming programmes the templates can name (next_, next2_, next3_…). */
-export const UPCOMING_FIELDS = 3;
-
-/** The template values for an item: the programme airing and the ones after it
- *  (`upcoming[0]` is next; later ones fill next2_*, next3_*). */
-export function overlayVars(cur: GuideEntry | undefined, upcoming: (GuideEntry | undefined)[], tz: Tz, ch: { name?: string; number?: string }): OverlayVars {
-  const it = cur?.item, next = upcoming[0], nx = next?.item;
+/** One programme's details, keyed with `prefix` (blank when there's none). */
+function slotVars(e: GuideEntry | undefined, prefix: string, tz: Tz): OverlayVars {
+  const it = e?.item;
   const pad = (n?: number) => (n == null ? "" : String(n).padStart(2, "0"));
-  const later: OverlayVars = {};
-  for (let k = 2; k <= UPCOMING_FIELDS; k++) {
-    const e = upcoming[k - 1];
-    later[`next${k}_show`] = e ? e.item.showTitle || e.item.title || "" : "";
-    later[`next${k}_title`] = e?.item.title ?? "";
-    later[`next${k}_start_time`] = e ? formatClock(e.startMs, tz) : "";
-  }
-  return {
-    ...later,
+  const v: Record<string, string> = {
     show: it ? it.showTitle || it.title || "" : "",
     title: it?.title ?? "",
     episode_code: it?.season != null && it.episodeNumber != null ? `S${pad(it.season)}E${pad(it.episodeNumber)}` : "",
     season: it?.season != null ? String(it.season) : "",
     episode: it?.episodeNumber != null ? String(it.episodeNumber) : "",
     year: it?.year != null ? String(it.year) : "",
-    start_time: cur ? formatClock(cur.startMs, tz) : "",
-    end_time: cur ? formatClock(cur.stopMs, tz) : "",
-    next_show: nx ? nx.showTitle || nx.title || "" : "",
-    next_title: nx?.title ?? "",
-    next_start_time: next ? formatClock(next.startMs, tz) : "",
-    channel: ch.name ?? "",
-    number: ch.number ?? "",
+    kind: !it ? "" : it.kind === "movie" ? "Movie" : it.kind === "episode" || it.showTitle ? "Episode" : "",
+    start_time: e ? formatClock(e.startMs, tz) : "",
+    end_time: e ? formatClock(e.stopMs, tz) : "",
   };
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [prefix + k, x]));
+}
+
+/** The template values for an item: the programme airing and the ones after it
+ *  (`upcoming[0]` is next; later ones fill next2_*, next3_*). */
+export function overlayVars(cur: GuideEntry | undefined, upcoming: (GuideEntry | undefined)[], tz: Tz, ch: { name?: string; number?: string }): OverlayVars {
+  const out: OverlayVars = { ...slotVars(cur, "", tz) };
+  for (let k = 1; k <= UPCOMING_FIELDS; k++) Object.assign(out, slotVars(upcoming[k - 1], OVERLAY_SLOTS[k].prefix, tz));
+  out.channel = ch.name ?? "";
+  out.number = ch.number ?? "";
+  return out;
 }
 
 export const fillTemplate = (text: string, v: OverlayVars): string =>
@@ -169,12 +179,74 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 const MIME: Record<string, string> = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", bmp: "image/bmp" };
 const num = (v: unknown, d: number) => (Number.isFinite(Number(v)) ? Number(v) : d);
 
-/** An asset reference (a file in the overlays' asset folder, or an absolute path). */
-export function assetPath(src: string, assetsDir: string, channelLogo?: string): string {
+// ---- pictures picked by the schedule ---------------------------------------------
+// A `match:` source names a file in the pictures folder by a template, e.g.
+// `match:{{next_show}}` or `match:logos/{{show}}`. Names match loosely (capitals,
+// punctuation, spaces / underscores and the extension don't matter), so
+// "Hey Dude" finds "hey dude.png" or "Hey_Dude.jpg".
+export const MATCH_PREFIX = "match:";
+export const PICTURE_EXT = ["png", "jpg", "jpeg", "webp", "gif", "svg", "bmp"];
+export const MOTION_EXT = ["mp4", "mov", "webm", "mkv", "m4v"];
+let PICTURES_DIR = "";
+/** Where `match:` sources look (the server sets it from its settings). */
+export const setOverlayPicturesDir = (dir: string) => { PICTURES_DIR = dir; };
+export const overlayPicturesDirInUse = () => PICTURES_DIR;
+
+/** A source with its schedule template filled in (only `match:` sources have one).
+ *  Slashes in the values are dropped, so a title can't point into another folder. */
+export function resolveSrc(src: string | undefined, v: OverlayVars): string {
+  if (!src || !src.startsWith(MATCH_PREFIX)) return src ?? "";
+  const tpl = src.slice(MATCH_PREFIX.length);
+  // a detail with no value (nothing after the last show in the guide): pick nothing
+  for (const m of tpl.matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)) if (!String(v[m[1].toLowerCase()] ?? "").trim()) return MATCH_PREFIX;
+  const safe = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, String(x).replace(/[\\/]+/g, " ")]));
+  return MATCH_PREFIX + fillTemplate(tpl, safe).trim();
+}
+
+/** How names compare: lower case, "&" as "and", letters and digits only. */
+export const pictureKey = (s: string) => s.toLowerCase().replace(/&/g, "and").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "");
+const listings = new Map<string, { at: number; files: string[] }>();
+/** The file in the pictures folder whose name matches (blank if none). */
+export function findPicture(name: string, kind: "image" | "video" = "image", dir = PICTURES_DIR): string {
+  if (!dir || !name.trim()) return "";
+  // "logos/Rugrats": a sub-folder, then the name (".." never leaves the folder)
+  const parts = name.replace(/\\/g, "/").split("/").map((p) => p.trim()).filter((p) => p && p !== "." && p !== "..");
+  const want = parts.pop() ?? "";
+  if (!want) return "";
+  const folder = join(dir, ...parts);
+  let ls = listings.get(folder);
+  if (!ls || Date.now() - ls.at > 5000) {
+    let files: string[] = [];
+    try { files = readdirSync(folder, { withFileTypes: true }).filter((d) => d.isFile()).map((d) => d.name); } catch { /* no folder */ }
+    ls = { at: Date.now(), files };
+    listings.set(folder, ls);
+  }
+  const exts = kind === "video" ? MOTION_EXT : PICTURE_EXT;
+  const usable = ls.files.filter((f) => exts.includes(f.split(".").pop()!.toLowerCase()));
+  const stem = (f: string) => f.replace(/\.[^.]+$/, "");
+  const lower = want.toLowerCase();
+  const pick = usable.find((f) => f.toLowerCase() === lower)                      // "Rugrats.png" as typed
+    ?? usable.find((f) => stem(f).toLowerCase() === lower)                         // any extension
+    ?? usable.find((f) => pictureKey(stem(f)) === pictureKey(want))                // loosely: "hey_dude" = "Hey Dude!"
+    ?? usable.find((f) => pictureKey(stem(f)).replace(/^the/, "") === pictureKey(want).replace(/^the/, "")); // with or without "The"
+  return pick && pictureKey(want) ? join(folder, pick) : "";
+}
+
+/** An asset reference (a file in the overlays' asset folder, or an absolute path).
+ *  A `match:` source must already be resolved (resolveSrc). */
+export function assetPath(src: string, assetsDir: string, channelLogo?: string, kind: "image" | "video" = "image"): string {
   if (!src) return "";
   if (src === CHANNEL_LOGO) return channelLogo ?? "";
+  if (src.startsWith(MATCH_PREFIX)) return findPicture(src.slice(MATCH_PREFIX.length), kind);
   if (src.startsWith("example:")) return EXAMPLES_DIR ? join(EXAMPLES_DIR, basename(src.slice(8))) : "";
   return isAbsolute(src) ? src : join(assetsDir, basename(src));
+}
+
+/** What makes an overlay's drawing differ between programmes: its texts and the
+ *  pictures its `match:` layers pick. */
+function drawnKey(o: Overlay, v: OverlayVars): string[] {
+  return o.layers.map((l) => (l.type === "text" ? fillTemplate(l.text, v)
+    : (l.type === "image" || l.type === "video") && (l.src.startsWith(MATCH_PREFIX) || l.fallback?.startsWith(MATCH_PREFIX)) ? `${resolveSrc(l.src, v)}|${resolveSrc(l.fallback, v)}` : ""));
 }
 
 /** Greedy word wrap by an average-glyph estimate (text has no layout engine in SVG). */
@@ -225,7 +297,7 @@ function stillBox(layers: OverlayLayer[]): Box | null {
 /** SVG of an overlay's still layers, cropped to their bounding box — or, for an
  *  animation frame, each layer in its `states` look, drawn over `view` (artboard
  *  units) at `px` pixels. */
-export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string) => { data: string; mime: string } | null,
+export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null,
   frame?: { states?: LayerState[]; view?: Box; px?: { w: number; h: number } }): { svg: string; box: Box } | null {
   const box = frame?.view ?? stillBox(o.layers);
   if (!box) return null;
@@ -240,7 +312,8 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string) 
       const bw = num(l.borderWidth, 0);
       el = `<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${num(l.radius, 0)}" fill="${esc(l.color || "#000000")}"${bw > 0 ? ` stroke="${esc(l.border || "#ffffff")}" stroke-width="${bw}"` : ""}${op}/>`;
     } else if (l.type === "image") {
-      const a = readAsset(l.src);
+      // a picture picked by the schedule, else its fallback (quiet: a miss with a fallback isn't a problem)
+      const a = readAsset(resolveSrc(l.src, v), !!l.fallback) ?? (l.fallback ? readAsset(resolveSrc(l.fallback, v)) : null);
       if (a) el = `<image x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" preserveAspectRatio="xMidYMid meet" href="data:${a.mime};base64,${a.data}"${op}/>`;
     } else if (l.type === "text") {
       let size = Math.max(4, num(l.size, 48));
@@ -511,7 +584,7 @@ function runFfmpeg(ffmpeg: string, args: string[]): Promise<string> {
 
 /** The overlay's transition clip for these template values (cached by content):
  *  the file, and where it sits in output pixels. */
-async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
+async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
   problems: string[]): Promise<{ file: string; origin: { x: number; y: number } } | null> {
   const out = opts.output!, t = o.timing ?? { mode: "always" };
   const sx = out.w / ARTBOARD.w, sy = out.h / ARTBOARD.h;
@@ -546,7 +619,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string)
   if (pw < 2 || ph < 2) return null;
   const view = { x: ox / sx, y: oy / sy, w: pw / sx, h: ph / sy };
 
-  const texts = o.layers.map((l) => (l.type === "text" ? fillTemplate(l.text, v) : ""));
+  const texts = drawnKey(o, v);
   const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1 })).digest("hex");
   const file = join(opts.cacheDir, `${key}.mkv`);
   if (existsSync(file)) { try { const now = new Date(); utimesSync(file, now, now); } catch { /* ignore */ } return { file, origin: { x: ox, y: oy } }; }
@@ -625,9 +698,16 @@ export async function applyOverlays(
   const SLACK_MS = 5;
   const missing = new Set<string>();
   const assets = new Map<string, { data: string; mime: string } | null>();
-  const readAsset = (src: string) => {
+  if (opts.picturesDir) setOverlayPicturesDir(opts.picturesDir);
+  // names `match:` layers looked for and didn't find (reported once, at the end)
+  const unmatched = new Set<string>();
+  const readAsset = (src: string, quiet = false) => {
     const p = assetPath(src, opts.assetsDir, opts.channelLogo);
-    if (!p) { out.problems.push("the channel has no logo file for its logo overlay"); return null; }
+    if (!p) {
+      if (src.startsWith(MATCH_PREFIX)) { if (!quiet && src.length > MATCH_PREFIX.length) unmatched.add(src.slice(MATCH_PREFIX.length)); }
+      else out.problems.push("the channel has no logo file for its logo overlay");
+      return null;
+    }
     if (!assets.has(p)) {
       try { assets.set(p, { data: readFileSync(p).toString("base64"), mime: MIME[p.split(".").pop()!.toLowerCase()] ?? "image/png" }); }
       catch { assets.set(p, null); out.problems.push(`image ${src} isn't readable`); }
@@ -638,7 +718,7 @@ export async function applyOverlays(
   const stills = new Map<string, { file: string; box: Box } | null>();
   await mkdir(opts.cacheDir, { recursive: true });
   const still = async (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
-    const texts = o.layers.map((l) => (l.type === "text" ? fillTemplate(l.text, v) : ""));
+    const texts = drawnKey(o, v);
     const key = `${JSON.stringify(o.layers)}|${JSON.stringify(texts)}`;
     if (stills.has(key)) return stills.get(key)!;
     let r: { file: string; box: Box } | null = null;
@@ -646,8 +726,13 @@ export async function applyOverlays(
     if (only) {
       // a lone image plays straight from its file (keeps animated GIFs moving),
       // scaled down first when it's far bigger than it shows on screen
-      const p = assetPath(only.src, opts.assetsDir, opts.channelLogo);
-      if (p && existsSync(p)) {
+      const want = resolveSrc(only.src, v), alt = resolveSrc(only.fallback, v);
+      let p = assetPath(want, opts.assetsDir, opts.channelLogo);
+      if (!p && alt) p = assetPath(alt, opts.assetsDir, opts.channelLogo);
+      if (!p && want.startsWith(MATCH_PREFIX)) {
+        // nothing picked for this programme: no picture this time (not a problem with the overlay)
+        if (want.length > MATCH_PREFIX.length) unmatched.add(want.slice(MATCH_PREFIX.length));
+      } else if (p && existsSync(p)) {
         const shown = o.anchor && o.layers.length === 1 ? (o.anchor.widthPercent ? (o.anchor.widthPercent / 100) * ARTBOARD.w : 0) : only.w;
         // ffmpeg can't read SVG: draw it to a PNG at twice its on-screen size
         const svgPng = /\.svg$/i.test(p) ? await svgToPng(p, Math.max(64, (shown || 240) * 2), only.w && only.h ? only.h / only.w : 1, opts.cacheDir) : null;
@@ -744,7 +829,9 @@ export async function applyOverlays(
       }
       for (const l of o.layers) {
         if (l.type !== "video") continue;
-        const p = assetPath(l.src, opts.assetsDir);
+        const want = resolveSrc(l.src, vars);
+        const p = assetPath(want, opts.assetsDir, opts.channelLogo, "video") || assetPath(resolveSrc(l.fallback, vars), opts.assetsDir, opts.channelLogo, "video");
+        if (!p && want.startsWith(MATCH_PREFIX)) { if (want.length > MATCH_PREFIX.length) unmatched.add(want.slice(MATCH_PREFIX.length)); continue; }
         if (!existsSync(p)) { out.problems.push(`video ${l.src} isn't on this machine`); continue; }
         layers.push({ source: { source_type: "local", path: p }, ...placement(l), ...common } as GraphicsLayer);
       }
@@ -752,6 +839,10 @@ export async function applyOverlays(
     if (layers.length) { item.graphics = [...layers, ...(item.graphics ?? [])]; out.items++; }
   }
   for (const m of missing) out.problems.push(`overlay "${m}" isn't in the overlay library`);
+  if (unmatched.size) {
+    const names = [...unmatched].sort((a, b) => a.localeCompare(b));
+    out.problems.push(`no picture in the overlay pictures folder matched ${names.slice(0, 8).map((n) => `"${n}"`).join(", ")}${names.length > 8 ? ` and ${names.length - 8} more` : ""} — add pictures with those names (Overlays → Pictures), or give the layer a fallback`);
+  }
   out.problems = [...new Set(out.problems)];
   return out;
 }

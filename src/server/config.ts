@@ -29,12 +29,15 @@ export interface AppConfig {
   // what's new) or "install" (also pull, build and restart at selfUpdateHour, local time)
   selfUpdate: string;
   selfUpdateHour: number;
+  // where overlay layers that pick a picture by the schedule (match:{{next_show}}) look;
+  // "" = <runtime>/overlays/images
+  overlayPicturesDir: string;
 }
 
 const DEFAULTS: AppConfig = {
   etvDbPath: "", libraryDbPath: "data/library.sqlite", channelsDir: "channels", outputDir: "playouts", timeZone: "", tz: "UTC", days: 3,
   autoBuild: false, buildIntervalMin: 60, refreshThresholdHours: 24, prunePast: true, includeSpecials: false, autoScanHours: 0,
-  keepNextRunning: false, legacyImport: true, selfUpdate: "notify", selfUpdateHour: 4,
+  keepNextRunning: false, legacyImport: true, selfUpdate: "notify", selfUpdateHour: 4, overlayPicturesDir: "",
 };
 
 export interface ChannelMeta {
@@ -346,6 +349,7 @@ export class ConfigStore {
       legacyImport: bool(m.legacyImport, DEFAULTS.legacyImport),
       selfUpdate: m.selfUpdate ?? DEFAULTS.selfUpdate,
       selfUpdateHour: num(m.selfUpdateHour, DEFAULTS.selfUpdateHour),
+      overlayPicturesDir: m.overlayPicturesDir ?? DEFAULTS.overlayPicturesDir,
     };
   }
 

@@ -5,14 +5,17 @@
 // <runtime>/overlays/assets   uploaded images / videos (content-addressed names)
 // <runtime>/overlays/cache    rendered overlay PNGs (one per distinct text; files
 //                             nothing has used for a while are pruned)
+// <runtime>/overlays/images   pictures that layers pick by the schedule (match:{{next_show}});
+//                             named by the people adding them, so the name is the match.
+//                             Settings can point it elsewhere (e.g. a shared folder).
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
-import { join, isAbsolute } from "node:path";
+import { join, isAbsolute, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConfigStore } from "./config.js";
 import { sniffImage, logoPath, isManagedLogo } from "./channel-logos.js";
-import { CHANNEL_LOGO, setOverlayExamplesDir, type Overlay, type OverlayBuildOptions } from "../overlays.js";
+import { CHANNEL_LOGO, setOverlayExamplesDir, setOverlayPicturesDir, type Overlay, type OverlayBuildOptions } from "../overlays.js";
 import type { WatermarkLocation } from "../model.js";
 
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
@@ -22,6 +25,13 @@ const abs = (root: string, p: string) => (isAbsolute(p) ? p : join(root, p));
 export const overlaysDir = (store: ConfigStore, root: string) => join(abs(root, store.getNextConfig().runtimeDir), "overlays");
 export const overlayAssetsDir = (store: ConfigStore, root: string) => join(overlaysDir(store, root), "assets");
 export const overlayCacheDir = (store: ConfigStore, root: string) => join(overlaysDir(store, root), "cache");
+/** The pictures folder `match:` layers pick from (also where they resolve in this thread). */
+export const overlayPicturesDir = (store: ConfigStore, root: string) => {
+  const set = store.get().overlayPicturesDir?.trim();
+  const d = set ? abs(root, set) : join(overlaysDir(store, root), "images");
+  setOverlayPicturesDir(d);
+  return d;
+};
 
 /** The library as engine overlays (anything malformed is dropped). */
 export function overlayLibrary(store: ConfigStore): Overlay[] {
@@ -41,6 +51,7 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
     channelName: meta?.name ?? channelName,
     channelNumber: meta?.number ?? "",
     examplesDir: overlayExamplesDir(root),
+    picturesDir: overlayPicturesDir(store, root),
     ffmpeg: existsSync(ff) ? ff : (nc.ffmpegPath || "ffmpeg"),
     output: { w: nc.video?.width || 1920, h: nc.video?.height || 1080 },
     channelLogo: meta?.logo && isManagedLogo(meta.logo) ? logoPath(join(abs(root, store.getNextConfig().runtimeDir), "logos"), meta.logo) ?? undefined : undefined,
@@ -67,6 +78,55 @@ export async function saveOverlayAsset(dir: string, data: Buffer, fileName = "")
   const dest = join(dir, file);
   if (!existsSync(dest)) await writeFile(dest, data);
   return { src: `assets/${file}`, kind };
+}
+
+// ---- the pictures folder (layers that pick a picture by the schedule) ------------
+const PICTURE_FILE = /\.(png|jpe?g|webp|gif|svg|bmp|mp4|mov|webm|mkv|m4v)$/i;
+
+/** A path inside the pictures folder from a name like "logos/Rugrats.png" (null if
+ *  it would leave the folder or isn't a picture / video). */
+export function pictureFile(dir: string, name: string): string | null {
+  const parts = String(name ?? "").replace(/\\/g, "/").split("/").filter((p) => p && p !== ".");
+  if (!parts.length || parts.some((p) => p === ".." || /[<>:"|?*\x00-\x1f]/.test(p)) || !PICTURE_FILE.test(parts[parts.length - 1])) return null;
+  return join(dir, ...parts);
+}
+
+/** Every picture / video in the folder (and its sub-folders), as "sub/name.png". */
+export function listPictures(dir: string, limit = 5000): { files: { name: string; size: number }[]; truncated: boolean } {
+  const files: { name: string; size: number }[] = [];
+  const walk = (rel: string, depth: number) => {
+    let ents: import("node:fs").Dirent[] = [];
+    try { ents = readdirSync(join(dir, rel), { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      if (files.length >= limit) return;
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory() && depth < 4 && !e.name.startsWith(".")) walk(r, depth + 1);
+      else if (e.isFile() && PICTURE_FILE.test(e.name)) { let size = 0; try { size = statSync(join(dir, r)).size; } catch { /* gone */ } files.push({ name: r, size }); }
+    }
+  };
+  walk("", 0);
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  return { files, truncated: files.length >= limit };
+}
+
+/** Save an uploaded picture under the name it came with (that name is what layers
+ *  match), replacing one of the same name. Returns the stored name. */
+export async function savePicture(dir: string, data: Buffer, fileName: string, folder = ""): Promise<string> {
+  const img = sniffImage(data);
+  const isoBmff = data.subarray(4, 8).toString("latin1") === "ftyp";
+  const ebml = data[0] === 0x1a && data[1] === 0x45 && data[2] === 0xdf && data[3] === 0xa3;
+  if (!img && !isoBmff && !ebml) throw new Error("That file isn't a picture (PNG, JPEG, GIF, WebP, SVG, BMP) or video (MP4, MOV, WebM, MKV).");
+  if (!img && data.length > MAX_VIDEO_BYTES) throw new Error("The video is too large (the limit is 300 MB).");
+  // keep the name people chose (it's the match), minus characters files can't have
+  let base = basename(String(fileName || "picture").replace(/\\/g, "/")).replace(/[<>:"/\\|?*\x00-\x1f]+/g, " ").replace(/\s+/g, " ").trim() || "picture";
+  const ext = (base.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toLowerCase();
+  const kindExt = img?.ext ?? (isoBmff ? "mp4" : "webm");
+  if (!PICTURE_FILE.test(base)) base = `${base.replace(/\.[a-z0-9]+$/i, "") || "picture"}.${img ? kindExt : (VIDEO_EXT.includes(ext) ? ext : kindExt)}`;
+  const target = pictureFile(dir, folder ? `${folder}/${base}` : base);
+  if (!target) throw new Error("That folder name can't be used.");
+  await mkdir(join(target, ".."), { recursive: true });
+  await writeFile(target, data);
+  return folder ? `${folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "")}/${base}` : base;
 }
 
 /** The stored file for an asset name (null if the name isn't one of ours). */
