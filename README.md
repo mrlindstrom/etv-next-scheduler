@@ -22,6 +22,8 @@ from your media library, along with the TV guide, and runs next for you.
   cards with themes, and a scrolling guide channel.
 - **Runs ErsatzTV next for you**: installs and updates next and ErsatzTV's ffmpeg
   from GitHub, writes its lineup and channel configs, and keeps it running.
+- **Plex Live TV & DVR**: acts as an HDHomeRun tuner, so Plex can watch and record
+  your channels, with the guide included.
 - **Troubleshooting**: watch any channel in the browser, test plays, and check
   your hardware encoder.
 

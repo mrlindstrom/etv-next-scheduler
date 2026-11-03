@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { compareChannelNumbers } from "../channelNumbers.js";
 import { FallbackPicker } from "../FallbackPicker.js";
 import { navigate } from "../nav.js";
-import { api, type NextConfig, type ChannelSummary, type ApplyResult, type NextRunnerStatus, type UpdateStatus } from "../api.js";
+import { api, type NextConfig, type ChannelSummary, type ApplyResult, type NextRunnerStatus, type UpdateStatus, type HdhrStatus, type HdhrTest } from "../api.js";
 
 const PHASE_COLOR: Record<string, string> = { running: "#22c55e", waiting: "#f59e0b", starting: "#f59e0b", crashed: "#ef4444", stopped: "#64748b" };
-const fmtUptime = (s: number) => { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
+const compareChannelNumbersOf = (a: ChannelSummary, b: ChannelSummary) => compareChannelNumbers(a.meta?.number ?? "", b.meta?.number ?? "");
+const fmtUptime =(s: number) => { if (!s) return ""; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`; };
 
 type LineupSort = "number" | "name" | "tvgId" | "group" | "enabled";
 
@@ -98,7 +99,7 @@ function ProgramsCard({ onInstalled }: { onInstalled: () => void }) {
 
 export function Streaming() {
   const [lineupSort, setLineupSort] = useState<{ key: LineupSort; dir: "asc" | "desc" }>({ key: "number", dir: "asc" });
-  const [tab, setTab] = useState<"server" | "av" | "upnext" | "guide" | "lineup">("server");
+  const [tab, setTab] = useState<"server" | "av" | "upnext" | "guide" | "plex" | "lineup">("server");
   const [cfg, setCfg] = useState<NextConfig | null>(null);
   const [channels, setChannels] = useState<ChannelSummary[]>([]);
   const [result, setResult] = useState<ApplyResult | null>(null);
@@ -108,6 +109,14 @@ export function Streaming() {
   const [logoAddr, setLogoAddr] = useState<{ auto: string } | null>(null);
   const [guideCheck, setGuideCheck] = useState<{ ffmpeg: string; found: boolean; drawtext: boolean } | null>(null);
   useEffect(() => { if (tab === "guide") api.guideCheck().then(setGuideCheck).catch(() => setGuideCheck(null)); }, [tab]);
+  const [hdhr, setHdhr] = useState<HdhrStatus | null>(null);
+  const [tuneCh, setTuneCh] = useState("");
+  const [tuneTest, setTuneTest] = useState<HdhrTest | "running" | null>(null);
+  useEffect(() => {
+    if (tab !== "plex") return;
+    const load = () => api.hdhr().then(setHdhr).catch(() => {});
+    load(); const t = window.setInterval(load, 3000); return () => clearInterval(t);
+  }, [tab]);
 
   useEffect(() => {
     api.getNextConfig().then(setCfg).catch(() => {});
@@ -130,7 +139,14 @@ export function Streaming() {
   const setG = (patch: Partial<NextConfig["guide"]>) => setCfg({ ...cfg, guide: { ...cfg.guide, ...patch } });
   const num = (e: React.ChangeEvent<HTMLInputElement>) => Number(e.target.value);
 
-  const save = async () => { const c = await api.setNextConfig(cfg); setCfg(c); flash("Saved ✓"); };
+  const save = async () => { const c = await api.setNextConfig(cfg); setCfg(c); flash("Saved ✓"); api.hdhr().then(setHdhr).catch(() => {}); };
+  const setH = (patch: Partial<NextConfig["hdhr"]>) => setCfg({ ...cfg, hdhr: { ...cfg.hdhr, ...patch } });
+  const runTuneTest = async () => {
+    setTuneTest("running");
+    try { setTuneTest(await api.hdhrTest(tuneCh || enabled.slice().sort(compareChannelNumbersOf)[0]?.meta?.number || "1")); }
+    catch (e) { setTuneTest({ ok: false, firstByteSec: null, seconds: 0, mb: 0, video: "", audio: "", problem: (e as Error).message, advice: "" }); }
+  };
+  const copy = (s: string) => { void navigator.clipboard?.writeText(s).then(() => flash("Copied ✓")).catch(() => {}); };
   const apply = async () => {
     await api.setNextConfig(cfg);
     const r = await api.applyNext(); setResult(r); flash(`Wrote lineup + ${r.channels.length} channel config(s) ✓`);
@@ -151,7 +167,7 @@ export function Streaming() {
   const sortCol = LINEUP_COLS.find((c) => c.key === lineupSort.key) ?? LINEUP_COLS[0];
   const lineupRows = [...channels].sort((a, b) => (sortCol.cmp(a, b) || byNumber(a, b)) * (lineupSort.dir === "asc" ? 1 : -1));
   const sortBy = (key: LineupSort) => setLineupSort((s) => ({ key, dir: s.key === key && s.dir === "asc" ? "desc" : "asc" }));
-  const TABS = [["server", "Server"], ["av", "Video & audio"], ["upnext", "Up-next cards"], ["guide", "Guide channel"], ["lineup", `Lineup (${enabled.length})`]] as const;
+  const TABS = [["server", "Server"], ["av", "Video & audio"], ["upnext", "Up-next cards"], ["guide", "Guide channel"], ["plex", "Plex (HDHomeRun)"], ["lineup", `Lineup (${enabled.length})`]] as const;
 
   return (
     <section className="screen">
@@ -341,6 +357,74 @@ export function Streaming() {
           <label style={{ flex: 2 }}>Promo/trailer clips folder<input value={cfg.guide.promoFolder} onChange={(e) => setG({ promoFolder: e.target.value })} placeholder="C:\\Media\\guide-promos (random clip in the corner window; blank = placeholder)" disabled={!cfg.guide.enabled} /></label>
         </div>
       </div>
+      </>}
+
+      {tab === "plex" && <>
+      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+        Plex's Live TV &amp; DVR only works with HDHomeRun tuners, so the scheduler can pretend to be one. Plex tunes a channel,
+        the scheduler asks ErsatzTV next for it and passes it on as the plain video stream a tuner sends (no re-encoding).
+        It runs on its own port, so Plex never needs the dashboard. Jellyfin, Emby and Channels DVR can use it too, though they
+        also take next's M3U directly.
+      </p>
+      <div className="form">
+        <div className="row">
+          <label className="switch" style={{ alignSelf: "end", paddingBottom: 8 }}>
+            <input type="checkbox" checked={cfg.hdhr.enabled} onChange={(e) => setH({ enabled: e.target.checked })} /> Act as an HDHomeRun tuner
+          </label>
+          <label>Port<input type="number" min={1} max={65535} value={cfg.hdhr.port} onChange={(e) => setH({ port: num(e) })} /></label>
+          <label title="How many channels can play or record at once. Each one is a channel next is streaming.">Tuners<input type="number" min={1} max={32} value={cfg.hdhr.tuners} onChange={(e) => setH({ tuners: Math.max(1, Math.min(32, num(e))) })} /></label>
+          <label>Name in Plex<input value={cfg.hdhr.name} onChange={(e) => setH({ name: e.target.value })} /></label>
+        </div>
+      </div>
+      <p className="muted" style={{ fontSize: 12 }}>Click <b>Save settings</b> below to turn it on or off; no restart needed.</p>
+
+      {hdhr && (hdhr.error
+        ? <p className="warn" style={{ fontSize: 12 }}>The tuner couldn't start: {hdhr.error}</p>
+        : hdhr.listening
+          ? <div className="card">
+              <div className="ok" style={{ marginBottom: 6 }}>✓ Tuner running at <code>{hdhr.address}</code> · {hdhr.tuners} tuner{hdhr.tuners === 1 ? "" : "s"}</div>
+              <h3 style={{ margin: "8px 0 4px" }}>Add it to Plex</h3>
+              <ol style={{ margin: "0 0 0 18px", padding: 0, fontSize: 13, lineHeight: 1.7 }}>
+                <li>In Plex, open <b>Settings → Live TV &amp; DVR → Set up Plex DVR</b>.</li>
+                <li>If Plex doesn't find it on its own, choose <b>Don't see your HDHomeRun device? Enter its network address manually</b> and
+                  type <code>{hdhr.address}</code> <button className="ghost" onClick={() => copy(hdhr.address)}>Copy</button></li>
+                <li>Plex lists your channels. Keep them all, or untick the ones you don't want.</li>
+                <li>For the guide, choose <b>Have an XMLTV guide on your server? Click here to use that instead</b> and enter
+                  {" "}<code>{hdhr.guideUrl}</code> <button className="ghost" onClick={() => copy(hdhr.guideUrl)}>Copy</button></li>
+                <li>Plex matches guide channels by number. Check the list and finish.</li>
+              </ol>
+              <p className="muted" style={{ fontSize: 12 }}>
+                ErsatzTV next must be running (top of this page). After adding or renumbering channels, click <b>Apply</b>, restart next,
+                then in Plex use <b>Scan channels</b> and refresh the guide.
+              </p>
+            </div>
+          : cfg.hdhr.enabled ? <p className="muted" style={{ fontSize: 12 }}>Save settings to start the tuner.</p> : null)}
+
+      {hdhr?.listening && <>
+        <h2>Test a tune</h2>
+        <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>Tunes a channel through the tuner just as Plex would, keeps about 12 seconds, and checks how long it took to start and what Plex receives.</p>
+        <div className="actions">
+          <select value={tuneCh} onChange={(e) => setTuneCh(e.target.value)} style={{ width: "auto" }}>
+            {enabled.slice().sort(compareChannelNumbersOf).map((c) => <option key={c.name} value={c.meta?.number}>{c.meta?.number} · {c.name}</option>)}
+          </select>
+          <button className="primary" onClick={runTuneTest} disabled={tuneTest === "running"}>{tuneTest === "running" ? "Tuning… (up to a minute)" : "Test tune"}</button>
+        </div>
+        {tuneTest && tuneTest !== "running" && (
+          <div className={`verify ${tuneTest.ok ? "" : "bad"}`} style={{ margin: "6px 0" }}>
+            <div className="status">{tuneTest.ok ? "✓ Plex would get a picture" : "✗ The tune didn't work"}</div>
+            {tuneTest.ok && <div className="muted">Started in {tuneTest.firstByteSec} s · {tuneTest.seconds} s captured ({tuneTest.mb} MB) · video {tuneTest.video} · audio {tuneTest.audio || "none"}</div>}
+            {tuneTest.problem && <div className="muted">{tuneTest.problem}</div>}
+            {tuneTest.advice && <div className="warn" style={{ marginTop: 4 }}>{tuneTest.advice}</div>}
+          </div>
+        )}
+        {hdhr.inUse.length > 0 && <>
+          <h2>In use</h2>
+          <table className="history">
+            <thead><tr><th>Channel</th><th>Watching</th><th>For</th><th>Sent</th></tr></thead>
+            <tbody>{hdhr.inUse.map((t, i) => <tr key={i}><td>{t.channel} · {t.name}</td><td>{t.client}</td><td>{fmtUptime(t.sinceSec)}</td><td>{t.mb} MB</td></tr>)}</tbody>
+          </table>
+        </>}
+      </>}
       </>}
 
       {tab === "lineup" && <>

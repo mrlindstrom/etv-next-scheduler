@@ -66,7 +66,14 @@ export interface NextConfig {
   audio: { codec: string; bitrateKbps: number; bufferKbps: number; channels: number; sampleRateHz: number; normalizeLoudness: boolean };
   upNext: { enabled: boolean; count: number; durationMs: number; fontFile: string };
   guide: { enabled: boolean; number: string; name: string; group: string; tvgId: string; musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string; promoRotateSec: number; promoFolder: string };
+  hdhr: { enabled: boolean; port: number; tuners: number; name: string; deviceId: string };
 }
+export interface HdhrStatus {
+  enabled: boolean; listening: boolean; port: number; error: string; address: string; guideUrl: string;
+  tuners: number; deviceId: string; name: string;
+  inUse: { channel: string; name: string; client: string; sinceSec: number; mb: number }[];
+}
+export interface HdhrTest { ok: boolean; firstByteSec: number | null; seconds: number; mb: number; video: string; audio: string; problem: string; advice: string }
 export interface ApplyResult { lineup: string; channels: { name: string; config: string }[]; skipped: string[]; }
 export interface ImportJob { running: boolean; done: boolean; error: string | null; index: number; total: number; table: string; result: { tables: number; rows: number } | null; startedAt: number; }
 export interface LibraryStatus { imported: boolean; libraryDbPath: string; source: string; job: ImportJob; stats?: { mediaItems: number; episodes: number; shows: number; chapters: number } | null; }
@@ -168,6 +175,8 @@ export const api = {
   upNextThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/upnext/themes").then(j),
   guideThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/guide/themes").then(j),
   guideCheck: (): Promise<{ ffmpeg: string; found: boolean; drawtext: boolean }> => fetch("/api/guide/check").then(j),
+  hdhr: (): Promise<HdhrStatus> => fetch("/api/hdhr").then(j),
+  hdhrTest: (channel: string): Promise<HdhrTest> => fetch("/api/hdhr/test", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ channel }) }).then(j),
   logs: (n = 400): Promise<{ lines: string[] }> => fetch(`/api/logs?n=${n}`).then(j),
   clearLogs: (): Promise<{ ok: boolean }> => fetch("/api/logs/clear", opts("POST")).then(j),
   getNextConfig: (): Promise<NextConfig> => fetch("/api/next-config").then(j),
@@ -253,8 +262,9 @@ export const api = {
   overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
   overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string; outOfSeason?: { id: string; name: string; when: string }[]; programmes?: { file: string; itemId: string; itemStart: number; path: string }[] }> =>
     fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),
-  saveOverlay: (o: Overlay): Promise<Overlay> => fetch("/api/overlays", opts("POST", o)).then(j),
-  deleteOverlay: (id: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/${encodeURIComponent(id)}`, opts("DELETE")).then(j),
+  // (both tell any overlay pickers on the page to fetch the list again)
+  saveOverlay: (o: Overlay): Promise<Overlay> => fetch("/api/overlays", opts("POST", o)).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
+  deleteOverlay: (id: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/${encodeURIComponent(id)}`, opts("DELETE")).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
   uploadOverlayAsset: (file: File): Promise<{ src: string; kind: "image" | "video"; error?: string }> =>
     fetch("/api/overlays/assets", { method: "POST", headers: { "Content-Type": file.type && /^(image|video)\//.test(file.type) ? file.type : "application/octet-stream", "x-file-name": encodeURIComponent(file.name) }, body: file }).then(j),
   renderOverlay: (overlay: Overlay, vars?: Record<string, string>): Promise<{ png: string | null; box: { x: number; y: number; w: number; h: number } | null; error?: string }> => fetch("/api/overlays/render", opts("POST", { overlay, vars })).then(j),

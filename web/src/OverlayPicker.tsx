@@ -4,13 +4,27 @@ import { useEffect, useState } from "react";
 import { api, type Overlay } from "./api.js";
 import { navigate } from "./nav.js";
 
-let cache: Promise<Overlay[]> | null = null;
+// shared for a few seconds only (a page full of pickers asks once); after that,
+// and after any overlay is saved or deleted, the list is fetched fresh
+let cache: { at: number; list: Promise<Overlay[]> } | null = null;
 export const refreshOverlayList = () => { cache = null; };
-const loadOverlays = () => (cache ??= api.overlays().then((r) => r.overlays).catch(() => { cache = null; return []; }));
+const loadOverlays = () => {
+  if (!cache || Date.now() - cache.at > 5000) cache = { at: Date.now(), list: api.overlays().then((r) => r.overlays).catch(() => { cache = null; return []; }) };
+  return cache.list;
+};
 
 export function OverlayPicker({ value, onChange, empty = "None" }: { value: string[]; onChange: (v: string[]) => void; empty?: string }) {
   const [all, setAll] = useState<Overlay[] | null>(null);
-  useEffect(() => { loadOverlays().then(setAll); }, []);
+  useEffect(() => {
+    let live = true;
+    const load = () => loadOverlays().then((l) => live && setAll(l));
+    load();
+    // coming back from the designer in another tab: pick up new overlays
+    const onFocus = () => { refreshOverlayList(); load(); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("tvn:overlays-changed", onFocus);
+    return () => { live = false; window.removeEventListener("focus", onFocus); window.removeEventListener("tvn:overlays-changed", onFocus); };
+  }, []);
   const byId = new Map((all ?? []).map((o) => [o.id, o]));
   const rest = (all ?? []).filter((o) => !value.includes(o.id));
   return (

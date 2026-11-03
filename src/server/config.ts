@@ -86,6 +86,9 @@ export interface NextConfig {
     musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string;
     promoRotateSec: number; promoFolder: string;
   };
+  // HDHomeRun tuner emulation for Plex Live TV & DVR (src/server/hdhr.ts), on its
+  // own port. `deviceId` is made once; Plex remembers the tuner by it.
+  hdhr: { enabled: boolean; port: number; tuners: number; name: string; deviceId: string };
 }
 
 export function defaultNextConfig(): NextConfig {
@@ -95,6 +98,7 @@ export function defaultNextConfig(): NextConfig {
     audio: { codec: "aac", bitrateKbps: 192, bufferKbps: 384, channels: 2, sampleRateHz: 48000, normalizeLoudness: true },
     upNext: { enabled: false, count: 3, durationMs: 12000, fontFile: "C:/Windows/Fonts/arialbd.ttf" },
     guide: { enabled: false, number: "100", name: "Guide", group: "", tvgId: "guide", musicFolder: "", columns: 3, scrollSpeed: 60, refreshMin: 30, theme: "classic", promoRotateSec: 30, promoFolder: "" },
+    hdhr: { enabled: false, port: 5004, tuners: 4, name: "tv-next-scheduler", deviceId: "" },
   };
 }
 
@@ -297,7 +301,8 @@ export class ConfigStore {
       video: { ...defaultNextConfig().video, ...(stored.video ?? {}) },
       audio: { ...defaultNextConfig().audio, ...(stored.audio ?? {}) },
       upNext: { ...defaultNextConfig().upNext, ...(stored.upNext ?? {}) },
-      guide: { ...defaultNextConfig().guide, ...(stored.guide ?? {}) } };
+      guide: { ...defaultNextConfig().guide, ...(stored.guide ?? {}) },
+      hdhr: { ...defaultNextConfig().hdhr, ...(stored.hdhr ?? {}) } };
     // ErsatzTV next names NVIDIA accel "cuda"; heal an earlier "nvenc" value.
     if (merged.video.accel === "nvenc") merged.video.accel = "cuda";
     return merged;
@@ -307,7 +312,10 @@ export class ConfigStore {
       video: { ...this.getNextConfig().video, ...(patch.video ?? {}) },
       audio: { ...this.getNextConfig().audio, ...(patch.audio ?? {}) },
       upNext: { ...this.getNextConfig().upNext, ...((patch as any).upNext ?? {}) },
-      guide: { ...this.getNextConfig().guide, ...((patch as any).guide ?? {}) } };
+      guide: { ...this.getNextConfig().guide, ...((patch as any).guide ?? {}) },
+      hdhr: { ...this.getNextConfig().hdhr, ...((patch as any).hdhr ?? {}) } };
+    // the device id is made by the server; a settings page saved before it existed mustn't blank it
+    if (!merged.hdhr.deviceId) merged.hdhr.deviceId = this.getNextConfig().hdhr.deviceId;
     this.db.prepare(`INSERT INTO settings(key,value) VALUES('nextConfig',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(JSON.stringify(merged));
     return merged;
   }
