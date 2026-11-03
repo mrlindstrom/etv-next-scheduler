@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, overlayAssetSrc, CHANNEL_LOGO, MATCH_PREFIX, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { navigate } from "../nav.js";
-import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, animLengths, isAnimated, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
+import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, layerStateAt, layerWindow, hasLayerTiming, fadeAt, animLengths, isAnimated, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
 
 const HOLIDAYS: [string, string][] = [
   ["christmas", "Christmas"], ["christmas_eve", "Christmas Eve"], ["halloween", "Halloween"], ["thanksgiving", "Thanksgiving"],
@@ -235,12 +235,23 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
   const [exact, setExact] = useState<{ png: string; box: { x: number; y: number; w: number; h: number } } | null>(null);
   const [guides, setGuides] = useState<{ x: number[]; y: number[] }>({ x: [], y: [] });
   const [dropHint, setDropHint] = useState(false);
-  // animation preview: in, hold, out, a pause — looping until stopped
+  // animation preview: in, hold, out, a pause — looping until stopped. With layers
+  // on their own times it plays the whole appearance as it airs ("tl", ms into it).
   const [playing, setPlaying] = useState(false);
-  const [frame, setFrame] = useState<{ phase: "in" | "out"; t: number } | "hidden" | null>(null);
+  const [frame, setFrame] = useState<{ phase: "in" | "out" | "tl"; t: number } | "hidden" | null>(null);
+  const timedMode = (ov.timing?.mode ?? "always") !== "always";
+  const showMs = Math.max(1, Number(ov.timing?.showSeconds ?? 10) || 10) * 1000;
+  const timed = timedMode && hasLayerTiming(ov.layers);
   useEffect(() => {
     if (!playing) { setFrame(null); return; }
     const { inMs, outMs } = animLengths(ov.layers);
+    if (timed) {
+      const t0 = performance.now(), cycle = showMs + 900;
+      let raf = 0;
+      const tick = () => { const e = (performance.now() - t0) % cycle; setFrame(e < showMs ? { phase: "tl", t: e } : "hidden"); raf = requestAnimationFrame(tick); };
+      raf = requestAnimationFrame(tick);
+      return () => cancelAnimationFrame(raf);
+    }
     const HOLD = 1500, GAP = 700, cycle = inMs + HOLD + outMs + GAP;
     const t0 = performance.now();
     let raf = 0;
@@ -251,8 +262,15 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, ov.layers]);
-  const stateOf = (l: Layer): LayerState => (frame === "hidden" ? HIDDEN : frame ? layerState(l, frame.phase, frame.t) : FULL);
+  }, [playing, ov.layers, timed, showMs]);
+  const stateOf = (l: Layer): LayerState => {
+    if (frame === "hidden") return HIDDEN;
+    if (!frame) return FULL;
+    if (frame.phase !== "tl") return layerState(l, frame.phase, frame.t);
+    const s = layerStateAt(l, frame.t, showMs, animLengths(ov.layers).outMs);
+    const env = isAnimated(ov.layers) ? 1 : fadeAt(frame.t, showMs, ov.fadeSeconds);
+    return env < 1 ? { ...s, opacity: s.opacity * env } : s;
+  };
   const history = useRef<string[]>([]);
   const future = useRef<string[]>([]);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -512,15 +530,20 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
             <button onClick={() => addLayer({ type: "image", src: CHANNEL_LOGO, x: 1600, y: 860, w: 220, h: 220 })} title="Each channel shows its own logo here">◎ Channel logo</button>
             <button onClick={() => addLayer({ type: "image", src: `${MATCH_PREFIX}{{next_show}}`, x: 1180, y: 700, w: 400, h: 225 })} title="A picture from the pictures folder, picked by a show detail (e.g. the next show's name)">🖼 Picture by show</button>
             <input ref={fileRef} type="file" accept="image/*,video/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) addFile(f); e.target.value = ""; }} />
-            <span className="ov-tb-sep" />
-            <label className="ov-inline"><input type="checkbox" checked={showSamples} onChange={(e) => setShowSamples(e.target.checked)} /> Sample values</label>
-            <select className="ov-bg" value={bg} onChange={(e) => setBg(e.target.value as any)} title="Canvas background">
-              <option value="dark">Dark background</option><option value="light">Light background</option><option value="check">Checkerboard</option>
-            </select>
-            <button onClick={() => refInput.current?.click()} className={ref ? "active" : ""} title="Put a picture or a frame of a video behind the canvas to line things up against. Only for designing: it isn't uploaded, saved or shown on air.">{ref ? "Change reference…" : "Reference picture or video…"}</button>
-            <input ref={refInput} type="file" accept="image/*,video/*,.mkv,.ts,.avi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) pickRef(f); e.target.value = ""; }} />
-            <button onClick={() => { setExact(null); setPlaying((p) => !p); }} className={playing ? "active" : ""} disabled={!isAnimated(ov.layers)} title={isAnimated(ov.layers) ? "Play the in / out animation on the canvas" : "Pick an animation below first"}>{playing ? "■ Stop" : "▶ Play animation"}</button>
-            <button onClick={checkRender} className={exact ? "active" : ""} disabled={busy} title="Show exactly what a build draws (the server's fonts)">{exact ? "Back to editing" : "Check exact render"}</button>
+          </div>
+          <div className="ov-viewbar">
+            <div className="ov-viewbar-group">
+              <label className="ov-inline"><input type="checkbox" checked={showSamples} onChange={(e) => setShowSamples(e.target.checked)} /> Sample values</label>
+              <select className="ov-bg" value={bg} onChange={(e) => setBg(e.target.value as any)} title="Canvas background">
+                <option value="dark">Dark background</option><option value="light">Light background</option><option value="check">Checkerboard</option>
+              </select>
+              <button onClick={() => refInput.current?.click()} className={ref ? "active" : ""} title="Put a picture or a frame of a video behind the canvas to line things up against. Only for designing: it isn't uploaded, saved or shown on air.">{ref ? "Change reference…" : "Reference picture or video…"}</button>
+              <input ref={refInput} type="file" accept="image/*,video/*,.mkv,.ts,.avi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) pickRef(f); e.target.value = ""; }} />
+            </div>
+            <div className="ov-viewbar-group">
+              <button onClick={() => { setExact(null); setPlaying((p) => !p); }} className={playing ? "active" : ""} disabled={!isAnimated(ov.layers) && !timed} title={timed ? "Play the whole appearance, each layer at its own time" : isAnimated(ov.layers) ? "Play the in / out animation on the canvas" : "Pick an animation below, or give a layer its own time on screen"}>{playing ? "■ Stop" : timed ? "▶ Play timeline" : "▶ Play animation"}</button>
+              <button onClick={checkRender} className={exact ? "active" : ""} disabled={busy} title="Show exactly what a build draws (the server's fonts)">{exact ? "Back to editing" : "Check exact render"}</button>
+            </div>
           </div>
 
           {ref && (
@@ -590,6 +613,9 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
               </div>
             )}
           </div>
+          {timedMode && ov.layers.length > 0 && (
+            <Timeline layers={ov.layers} showMs={showMs} t={frame && frame !== "hidden" && frame.phase === "tl" ? frame.t : null} sel={sel} onSelect={setSel} />
+          )}
           <p className="muted ov-hint">Drag to move, drag the corners to resize (Shift stretches images), arrow keys nudge (Shift = 10px). Hold Alt to stop snapping. The dashed line is the safe area most TVs show.</p>
 
           <div className="ov-panels">
@@ -694,7 +720,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
             )}
           </div>
 
-          {L && sel != null && <LayerProps l={L} i={sel} setLayer={setLayer} textRef={textRef} onReplace={(f) => replaceFile(sel, f)} onDuplicate={() => duplicate(sel)} onDelete={() => removeLayer(sel)} fields={fields} slots={slots} vars={vars} />}
+          {L && sel != null && <LayerProps l={L} i={sel} setLayer={setLayer} textRef={textRef} onReplace={(f) => replaceFile(sel, f)} onDuplicate={() => duplicate(sel)} onDelete={() => removeLayer(sel)} fields={fields} slots={slots} vars={vars} timedMode={timedMode} showMs={showMs} />}
 
           <div className="meta-card">
             <b>Show details you can use</b>
@@ -754,10 +780,10 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
   );
 }
 
-function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete, fields, slots, vars }: {
+function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete, fields, slots, vars, timedMode, showMs }: {
   l: Layer; i: number; setLayer: (i: number, p: Partial<Layer>) => void; textRef: React.RefObject<HTMLTextAreaElement>;
   onReplace: (f: File) => void; onDuplicate: () => void; onDelete: () => void;
-  fields: OverlayField[]; slots: string[]; vars: Record<string, string>;
+  fields: OverlayField[]; slots: string[]; vars: Record<string, string>; timedMode: boolean; showMs: number;
 }) {
   const set = (p: Record<string, unknown>) => setLayer(i, p as Partial<Layer>);
   const n = (k: string, label: string, min = 0, step = 1) => (
@@ -777,14 +803,19 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
             <label>Font<select value={l.font || "Arial"} onChange={(e) => set({ font: e.target.value })}>{FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}</select></label>
             {n("size", "Size", 6)}
           </div>
-          <div className="ov-grid2">
+          <div className="ov-grid3">
             <label>Colour<input type="color" value={l.color || "#ffffff"} onChange={(e) => set({ color: e.target.value })} /></label>
-            <label>Align
-              <div className="ov-seg">
-                {(["left", "center", "right"] as const).map((a) => <button key={a} className={(l.align ?? "left") === a ? "active" : ""} onClick={() => set({ align: a })}>{a === "left" ? "⇤" : a === "center" ? "↔" : "⇥"}</button>)}
-                {(["top", "middle", "bottom"] as const).map((a) => <button key={a} className={(l.valign ?? "top") === a ? "active" : ""} onClick={() => set({ valign: a })} title={`Align ${a}`}>{a === "top" ? "⤒" : a === "middle" ? "≡" : "⤓"}</button>)}
-              </div>
-            </label>
+            <label>Outline<input type="color" value={l.outline || "#000000"} onChange={(e) => set({ outline: e.target.value, outlineWidth: l.outlineWidth || 3 })} /></label>
+            {n("outlineWidth", "Width")}
+          </div>
+          <div className="ov-align">
+            <span className="ov-align-label">Align</span>
+            <div className="ov-seg">
+              {(["left", "center", "right"] as const).map((a) => <button key={a} className={(l.align ?? "left") === a ? "active" : ""} onClick={() => set({ align: a })} title={`Align ${a}`}>{a === "left" ? "⇤" : a === "center" ? "↔" : "⇥"}</button>)}
+            </div>
+            <div className="ov-seg">
+              {(["top", "middle", "bottom"] as const).map((a) => <button key={a} className={(l.valign ?? "top") === a ? "active" : ""} onClick={() => set({ valign: a })} title={`Align ${a}`}>{a === "top" ? "⤒" : a === "middle" ? "≡" : "⤓"}</button>)}
+            </div>
           </div>
           <div className="ov-checks">
             <label className="ov-inline"><input type="checkbox" checked={!!l.bold} onChange={(e) => set({ bold: e.target.checked })} /> Bold</label>
@@ -792,10 +823,6 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
             <label className="ov-inline"><input type="checkbox" checked={!!l.upper} onChange={(e) => set({ upper: e.target.checked })} /> ALL CAPS</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.shadow} onChange={(e) => set({ shadow: e.target.checked })} /> Shadow</label>
             <label className="ov-inline" title="Keep it on one line; it gets smaller when a long show name wouldn't fit"><input type="checkbox" checked={!!l.fit} onChange={(e) => set({ fit: e.target.checked })} /> Shrink to fit</label>
-          </div>
-          <div className="ov-grid2">
-            <label>Outline<input type="color" value={l.outline || "#000000"} onChange={(e) => set({ outline: e.target.value, outlineWidth: l.outlineWidth || 3 })} /></label>
-            {n("outlineWidth", "Outline width")}
           </div>
         </>
       )}
@@ -821,6 +848,7 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
           {l.type === "video" && <p className="muted" style={{ fontSize: 12 }}>Videos play over the show (with transparency if the file has it) and loop while the overlay is up.</p>}
         </>
       )}
+      <OnScreen l={l} set={set} timedMode={timedMode} showMs={showMs} />
       <AnimProps l={l} set={set} />
       <label>Layer opacity: {l.opacity ?? 100}%<input type="range" min={0} max={100} value={l.opacity ?? 100} onChange={(e) => set({ opacity: Number(e.target.value) })} /></label>
       <details>
@@ -832,6 +860,64 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
           <button onClick={() => set({ y: Math.round((AH - l.h) / 2) })}>Centre down</button>
         </div>
       </details>
+    </div>
+  );
+}
+
+/** When a layer is on screen within each appearance: from N seconds in, for M seconds. */
+function OnScreen({ l, set, timedMode, showMs }: { l: Layer; set: (p: Record<string, unknown>) => void; timedMode: boolean; showMs: number }) {
+  const a = l.appear ?? {};
+  const own = (a.at ?? 0) > 0 || (a.for ?? 0) > 0;
+  const upd = (patch: { at?: number; for?: number }) => {
+    const next = { ...a, ...patch };
+    if (!next.at) delete next.at;
+    if (!next.for) delete next.for;
+    set({ appear: next.at || next.for ? next : undefined });
+  };
+  const sec = showMs / 1000;
+  const w = layerWindow(l, showMs);
+  return (
+    <details open={own}>
+      <summary className="muted">On screen{own ? ` · ${(w.start / 1000).toFixed(1)}–${(w.end / 1000).toFixed(1)} s` : ""}</summary>
+      {!timedMode ? <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>An overlay that's always on has no start or end to time layers against. Choose another “When it shows” to give layers their own time on screen.</p> : (
+        <>
+          <div className="ov-grid2">
+            <label>From (s in)<input type="number" min={0} max={sec} step={0.5} value={a.at ?? 0} onChange={(e) => upd({ at: Math.max(0, Math.min(sec, Number(e.target.value))) })} /></label>
+            <label>For (s)<input type="number" min={0} step={0.5} value={a.for ?? ""} placeholder="to the end" onChange={(e) => upd({ for: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })} /></label>
+          </div>
+          <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>Seconds after the overlay appears (it's up for {sec} s). Blank “For” keeps the layer up until the overlay goes off. It comes on and goes off with its own animation below.</p>
+          {(a.at ?? 0) >= sec && <p className="warn" style={{ fontSize: 12, margin: "4px 0 0" }}>That's after the overlay has gone ({sec} s), so this layer never shows.</p>}
+        </>
+      )}
+    </details>
+  );
+}
+
+/** Each layer's time on screen within one appearance, with the preview's playhead. */
+function Timeline({ layers, showMs, t, sel, onSelect }: { layers: Layer[]; showMs: number; t: number | null; sel: number | null; onSelect: (i: number) => void }) {
+  const ticks = Math.max(1, Math.round(showMs / 1000));
+  const every = ticks > 30 ? 10 : ticks > 12 ? 5 : ticks > 6 ? 2 : 1;
+  const name = (l: Layer) => (l.type === "text" ? (l.text || "Text").replace(/\s+/g, " ") : (l.type === "image" || l.type === "video") && l.src.startsWith(MATCH_PREFIX) ? `Picture by ${l.src.slice(MATCH_PREFIX.length)}` : LAYER_LABEL[l.type]);
+  return (
+    <div className="ov-timeline" title="When each layer is on screen during the overlay. Set it per layer under On screen.">
+      <div className="ov-tl-row ov-tl-scale">
+        <span className="ov-tl-name muted">Seconds</span>
+        <div className="ov-tl-track">
+          {Array.from({ length: Math.floor(ticks / every) + 1 }, (_, k) => k * every).map((s) => <span key={s} className="ov-tl-tick" style={{ left: `${(s * 1000 / showMs) * 100}%` }}>{s}</span>)}
+        </div>
+      </div>
+      {layers.map((l, i) => ({ l, i })).reverse().map(({ l, i }) => {
+        const w = layerWindow(l, showMs);
+        return (
+          <div key={i} className={`ov-tl-row${sel === i ? " sel" : ""}`} onClick={() => onSelect(i)}>
+            <span className="ov-tl-name">{name(l).slice(0, 26)}</span>
+            <div className="ov-tl-track">
+              <div className={`ov-tl-bar${w.start > 0 || w.own ? " own" : ""}`} style={{ left: `${(w.start / showMs) * 100}%`, width: `${Math.max(0.5, ((w.end - w.start) / showMs) * 100)}%` }} />
+            </div>
+          </div>
+        );
+      })}
+      {t != null && <div className="ov-tl-head" style={{ left: `calc(var(--tl-name) + (100% - var(--tl-name) - 16px) * ${t / showMs})` }} />}
     </div>
   );
 }
@@ -856,8 +942,8 @@ function AnimProps({ l, set }: { l: Layer; set: (p: Record<string, unknown>) => 
         </label>
         {st.type !== "none" && (
           <div className="ov-grid3">
-            <label>Length (s)<input type="number" min={0.1} step={0.1} value={st.duration ?? 0.5} onChange={(e) => step(k, { duration: Number(e.target.value) })} /></label>
-            <label>Delay (s)<input type="number" min={0} step={0.05} value={st.delay ?? 0} onChange={(e) => step(k, { delay: Number(e.target.value) })} /></label>
+            <label>Length (s)<input type="number" min={0.1} step={0.1} value={Math.round((st.duration ?? 0.5) * 100) / 100} onChange={(e) => step(k, { duration: Number(e.target.value) })} /></label>
+            <label>Delay (s)<input type="number" min={0} step={0.05} value={Math.round((st.delay ?? 0) * 100) / 100} onChange={(e) => step(k, { delay: Number(e.target.value) })} /></label>
             <label>Feel<select value={st.ease ?? (st.type === "pop" ? "bounce" : "smooth")} onChange={(e) => step(k, { ease: e.target.value as AnimStep["ease"] })}>{EASES.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}</select></label>
           </div>
         )}

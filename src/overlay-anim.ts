@@ -52,7 +52,10 @@ function ease(e: Ease | undefined, p: number): number {
 }
 const stepMs = (s?: AnimStep) => (s && s.type !== "none" ? Math.max(0, (s.delay ?? 0) + (s.duration ?? 0.5)) * 1000 : 0);
 
-interface Geo { x: number; y: number; w: number; h: number; type: string; anim?: LayerAnim }
+/** When a layer is on screen within each appearance of its overlay: `at` seconds
+ *  after the overlay appears, for `for` seconds (none: until the overlay goes off). */
+export interface LayerAppear { at?: number; for?: number }
+interface Geo { x: number; y: number; w: number; h: number; type: string; anim?: LayerAnim; appear?: LayerAppear }
 /** How long the whole overlay takes to come in / go out (the slowest layer). */
 export function animLengths(layers: Geo[]): { inMs: number; outMs: number } {
   return { inMs: Math.max(0, ...layers.map((l) => stepMs(l.anim?.in))), outMs: Math.max(0, ...layers.map((l) => stepMs(l.anim?.out))) };
@@ -98,6 +101,38 @@ export function layerState(l: Geo, phase: "in" | "out", tMs: number): LayerState
     case "typewriter": st.chars = l.type === "text" ? p : 1; if (l.type !== "text") st.opacity = lin; break;
   }
   return st;
+}
+
+// ---- layers with their own time on screen ------------------------------------------
+export const HIDDEN_STATE: LayerState = { ...FULL, opacity: 0 };
+/** Whether any layer has its own time on screen (starts late or leaves early). */
+export const hasLayerTiming = (layers: Geo[]) => layers.some((l) => !!l.appear && ((l.appear.at ?? 0) > 0 || (l.appear.for ?? 0) > 0));
+
+/** Where a layer is on screen within one appearance `showMs` long (ms from its start).
+ *  `own`: it leaves at its own time, not with the rest of the overlay. */
+export function layerWindow(l: Geo, showMs: number): { start: number; end: number; own: boolean } {
+  const start = Math.min(Math.max(0, (l.appear?.at ?? 0) * 1000), showMs);
+  const f = l.appear?.for ?? 0;
+  const own = f > 0 && start + f * 1000 < showMs;
+  return { start, end: own ? start + f * 1000 : showMs, own };
+}
+
+/** A layer's look `tMs` into one appearance `showMs` long: hidden before its start,
+ *  its "in" animation from its start, its "out" animation so it's gone by its own
+ *  end — or, for layers that stay to the end, with everything else as the overlay
+ *  leaves (`groupOutMs` = the slowest layer's out animation). */
+export function layerStateAt(l: Geo, tMs: number, showMs: number, groupOutMs: number): LayerState {
+  const w = layerWindow(l, showMs);
+  if (tMs < w.start || tMs >= w.end) return HIDDEN_STATE;
+  const outStart = Math.max(w.start, w.own ? w.end - stepMs(l.anim?.out) : showMs - groupOutMs);
+  return tMs < outStart ? layerState(l, "in", tMs - w.start) : layerState(l, "out", tMs - outStart);
+}
+
+/** How much of an un-animated overlay shows `tMs` into an appearance, with its
+ *  fade setting (seconds) at each end — as next fades a plain still. */
+export function fadeAt(tMs: number, showMs: number, fadeSeconds: number | undefined): number {
+  const f = Math.min(Math.max(0, fadeSeconds ?? 1) * 1000, showMs / 3);
+  return f > 0 ? Math.max(0, Math.min(1, tMs / f, (showMs - tMs) / f)) : 1;
 }
 
 /** The artboard box a layer covers in a given state (null = nothing visible). */

@@ -24,13 +24,13 @@ import type { GraphicsLayer, PeriodicTiming, PlayoutItem, WatermarkLocation } fr
 import type { GuideEntry, ItemLabel } from "./engine.js";
 import { formatClock } from "./upnext-ass.js";
 import { localParts, type Tz } from "./time.js";
-import { layerState, stateBox, animLengths, isAnimated, FULL, type LayerAnim, type LayerState } from "./overlay-anim.js";
+import { layerState, layerStateAt, hasLayerTiming, fadeAt, stateBox, animLengths, isAnimated, FULL, type LayerAnim, type LayerAppear, type LayerState } from "./overlay-anim.js";
 import { holidayDate } from "./holidays.js";
 import { spawn } from "node:child_process";
 
 export const ARTBOARD = { w: 1920, h: 1080 };
 
-interface Box { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
+interface Box { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim; appear?: LayerAppear }
 export type OverlayLayer =
   // `src` may be `match:<name template>` — a picture in the pictures folder picked
   // by the schedule (e.g. `match:{{next_show}}`); `fallback` is used when none matches
@@ -553,8 +553,9 @@ function animPlan(o: Overlay, startMs: number, endMs: number, prog: { startMs: n
   const t = o.timing ?? { mode: "always" };
   const { inMs, outMs } = animLengths(o.layers);
   const showMs = Math.max(1, num(t.showSeconds, 10)) * 1000;
+  const timed = isTimed(o); // the clip holds the whole appearance: no still in between
   const hold = (phase: number, len: number, freq: number): PeriodicTiming | null =>
-    len > 0 ? { timing_type: "periodic", clock: "content", frequency_ms: freq, hold_ms: Math.round(len), fade_ms: CUT_FADE_MS, phase_offset_ms: Math.round(((phase % freq) + freq) % freq) } : null;
+    len > 0 && !timed ? { timing_type: "periodic", clock: "content", frequency_ms: freq, hold_ms: Math.round(len), fade_ms: CUT_FADE_MS, phase_offset_ms: Math.round(((phase % freq) + freq) % freq) } : null;
   if (t.mode === "always" || !t.mode) return { offset: 0, hold: hold(inMs, DAY - 1, DAY) };
   const len = showMs - inMs - outMs;
   if (t.mode === "every") {
@@ -582,6 +583,13 @@ function runFfmpeg(ffmpeg: string, args: string[]): Promise<string> {
   });
 }
 
+/** Frames that would draw the same picture share a key (rounded to 1/100). */
+const stateKey = (states: LayerState[]) => JSON.stringify(states.map((st) => [st.opacity, st.dx, st.dy, st.scale, st.clip, st.chars].map((n) => (typeof n === "number" ? Math.round(n * 100) / 100 : n))));
+
+/** An overlay whose layers have their own times on screen (only overlays that come
+ *  and go: "always on" has no appearance to time them in). Built as one clip. */
+export const isTimed = (o: Overlay) => (o.timing?.mode ?? "always") !== "always" && hasLayerTiming(o.layers);
+
 /** The overlay's transition clip for these template values (cached by content):
  *  the file, and where it sits in output pixels. */
 async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
@@ -596,6 +604,19 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   // one appearance's frames, as times from its start (ms) and the layers' states
   const nIn = Math.ceil(inMs / STEP), nOut = Math.ceil(outMs / STEP);
   const app: { t: number; states: LayerState[] | null }[] = [];
+  if (isTimed(o)) {
+    // layers with their own time on screen: the whole appearance is in the clip
+    // (nothing is held as a still), one frame per change
+    const fade = isAnimated(o.layers) ? null : o.fadeSeconds;
+    let prev = "";
+    for (let tt = 0; tt < showMs; tt += STEP) {
+      const env = fade === null ? 1 : fadeAt(tt, showMs, fade);
+      const states = o.layers.map((l) => { const s = layerStateAt(l, tt, showMs, outMs); return env < 1 ? { ...s, opacity: s.opacity * env } : s; });
+      const k = stateKey(states);
+      if (k !== prev) { app.push({ t: tt, states }); prev = k; }
+    }
+    app.push({ t: showMs, states: null });
+  } else {
   for (let j = 0; j <= nIn; j++) app.push({ t: j * STEP, states: o.layers.map((l) => layerState(l, "in", j * STEP)) });
   if (mode === "always") app.push({ t: (nIn + 1) * STEP, states: null });
   else {
@@ -605,6 +626,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
     else outAt = Math.max(outAt, (nIn + 1) * STEP);
     for (let j = 0; j <= nOut; j++) app.push({ t: outAt + j * STEP, states: o.layers.map((l) => layerState(l, "out", j * STEP)) });
     app.push({ t: outAt + (nOut + 1) * STEP, states: null });
+  }
   }
 
   // the region the graphic ever covers, in output pixels (even, inside the frame)
@@ -620,7 +642,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   const view = { x: ox / sx, y: oy / sy, w: pw / sx, h: ph / sy };
 
   const texts = drawnKey(o, v);
-  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1 })).digest("hex");
+  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1, ...(isTimed(o) ? { timed: true, fade: o.fadeSeconds ?? 1 } : {}) })).digest("hex");
   const file = join(opts.cacheDir, `${key}.mkv`);
   if (existsSync(file)) { try { const now = new Date(); utimesSync(file, now, now); } catch { /* ignore */ } return { file, origin: { x: ox, y: oy } }; }
 
@@ -629,7 +651,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   await mkdir(tmp, { recursive: true });
   const pngs = new Map<string, string>();
   const frameFile = async (states: LayerState[] | null): Promise<string | null> => {
-    const k = states ? JSON.stringify(states.map((st) => [st.opacity, st.dx, st.dy, st.scale, st.clip, st.chars].map((n) => (typeof n === "number" ? Math.round(n * 100) / 100 : n)))) : "blank";
+    const k = states ? stateKey(states) : "blank";
     if (pngs.has(k)) return pngs.get(k)!;
     const svg = states ? overlaySvg(o, v, readAsset, { states, view, px: { w: pw, h: ph } })?.svg
       : `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"/>`;
@@ -794,7 +816,7 @@ export async function applyOverlays(
       if (!inSeason(o.season, s, tz)) continue;
       const progSpan = cur ? (span.get(cur) ?? cur) : undefined;
       // animated: the transition clip (canvas) + the held still between transitions
-      if (isAnimated(o.layers) && !o.anchor && opts.ffmpeg && opts.output) {
+      if ((isAnimated(o.layers) || isTimed(o)) && !o.anchor && opts.ffmpeg && opts.output) {
         const plan = animPlan(o, s, f, progSpan);
         if (!plan) continue;
         vars ??= overlayVars(cur, next, tz, { name: opts.channelName, number: opts.channelNumber });

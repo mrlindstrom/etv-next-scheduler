@@ -19,7 +19,7 @@ export const legacyLogoSrc = (p: LegacyChannelPlan): string => p.logo?.url ?? (p
 // ---- overlays (timed graphics over programmes; see src/overlays.ts) ----
 import type { LayerAnim } from "../../src/overlay-anim.js";
 export type { LayerAnim } from "../../src/overlay-anim.js";
-interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim }
+interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim; appear?: { at?: number; for?: number } }
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string; fallback?: string })
   | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
