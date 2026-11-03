@@ -806,7 +806,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     } catch (e) { appLog("server", `generating channel logos failed: ${(e as Error).message}`); return []; }
   };
   void fillLogos().then((n) => { if (n.length) appLog("server", `generated name logos for ${n.length} channel(s) without one: ${n.join(", ")}`); });
-  const pruneUnusedLogos = () => { try { pruneLogos(logosDir(), store.channelMetas().map((m) => m.logo)); } catch { /* ignore */ } };
+  // the guide channel's logo lives in the streaming settings, not channel_meta
+  const pruneUnusedLogos = () => { try { pruneLogos(logosDir(), [...store.channelMetas().map((m) => m.logo), store.getNextConfig().guide.logo]); } catch { /* ignore */ } };
   // uploads arrive as the raw image body (Content-Type: image/…)
   app.addContentTypeParser(/^image\//, { parseAs: "buffer", bodyLimit: MAX_LOGO_BYTES + 1024 }, (_req, body, done) => done(null, body));
   app.get("/logos/:file", async (req, reply) => {
@@ -824,6 +825,21 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
       pruneUnusedLogos();
       return meta;
     } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  // the guide channel's logo (Streaming → Guide channel); stored with the streaming settings
+  app.post("/api/guide/logo", async (req, reply) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) { reply.code(400); return { error: "Send the image file as the request body." }; }
+    try {
+      const logo = await saveLogo(logosDir(), req.body);
+      const cfg = store.setNextConfig({ guide: { ...store.getNextConfig().guide, logo } });
+      pruneUnusedLogos();
+      return cfg;
+    } catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  app.delete("/api/guide/logo", async () => {
+    const cfg = store.setNextConfig({ guide: { ...store.getNextConfig().guide, logo: "" } });
+    pruneUnusedLogos();
+    return cfg;
   });
   // removing a logo goes back to the generated channel-name logo (as legacy does)
   app.delete("/api/channels/:name/logo", async (req) => {

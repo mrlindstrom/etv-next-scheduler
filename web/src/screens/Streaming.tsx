@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { compareChannelNumbers } from "../channelNumbers.js";
 import { FallbackPicker } from "../FallbackPicker.js";
 import { navigate } from "../nav.js";
-import { api, type NextConfig, type ChannelSummary, type ApplyResult, type NextRunnerStatus, type UpdateStatus, type HdhrStatus, type HdhrTest } from "../api.js";
+import { api, logoSrc, type NextConfig, type ChannelSummary, type ApplyResult, type NextRunnerStatus, type UpdateStatus, type HdhrStatus, type HdhrTest } from "../api.js";
 
 const PHASE_COLOR: Record<string, string> = { running: "#22c55e", waiting: "#f59e0b", starting: "#f59e0b", crashed: "#ef4444", stopped: "#64748b" };
 const compareChannelNumbersOf = (a: ChannelSummary, b: ChannelSummary) => compareChannelNumbers(a.meta?.number ?? "", b.meta?.number ?? "");
@@ -109,6 +109,20 @@ export function Streaming() {
   const [logoAddr, setLogoAddr] = useState<{ auto: string } | null>(null);
   const [guideCheck, setGuideCheck] = useState<{ ffmpeg: string; found: boolean; drawtext: boolean } | null>(null);
   useEffect(() => { if (tab === "guide") api.guideCheck().then(setGuideCheck).catch(() => setGuideCheck(null)); }, [tab]);
+  // the guide channel's logo saves on upload/remove (only that field is taken back, so unsaved edits stay)
+  const [guideLogoBusy, setGuideLogoBusy] = useState(false);
+  const guideLogoInput = useRef<HTMLInputElement>(null);
+  const takeGuideLogo = (c: NextConfig) => setCfg((old) => old && { ...old, guide: { ...old.guide, logo: c.guide.logo } });
+  const uploadGuideLogo = async (f: File) => {
+    setGuideLogoBusy(true);
+    try { takeGuideLogo(await api.uploadGuideLogo(f)); flash("Logo saved ✓ — Apply to publish it"); }
+    catch (e) { setMsg(`Error: ${(e as Error).message}`); }
+    finally { setGuideLogoBusy(false); }
+  };
+  const removeGuideLogo = async () => {
+    setGuideLogoBusy(true);
+    try { takeGuideLogo(await api.removeGuideLogo()); flash("Logo removed ✓"); } finally { setGuideLogoBusy(false); }
+  };
   const [hdhr, setHdhr] = useState<HdhrStatus | null>(null);
   const [tuneCh, setTuneCh] = useState("");
   const [tuneTest, setTuneTest] = useState<HdhrTest | "running" | null>(null);
@@ -355,6 +369,28 @@ export function Streaming() {
         </div>
         <div className="row">
           <label style={{ flex: 2 }}>Promo/trailer clips folder<input value={cfg.guide.promoFolder} onChange={(e) => setG({ promoFolder: e.target.value })} placeholder="C:\\Media\\guide-promos (random clip in the corner window; blank = placeholder)" disabled={!cfg.guide.enabled} /></label>
+        </div>
+      </div>
+      <h2>Logo</h2>
+      <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>The guide channel's icon in TV apps' channel lists and guides, like any channel's logo. Uploads save right away; click <b>Apply</b> and restart next for TV apps to pick it up.</p>
+      <div className="row" style={{ alignItems: "center", gap: 14 }}>
+        <div onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) void uploadGuideLogo(f); }}
+          title="Drop an image here to use it as the logo"
+          style={{ width: 120, height: 80, border: "1px dashed var(--border, #475569)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+          {logoSrc(cfg.guide.logo)
+            ? <img src={logoSrc(cfg.guide.logo)} alt="Guide channel logo" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+            : <span className="muted" style={{ fontSize: 11, textAlign: "center", padding: 6 }}>{guideLogoBusy ? "Uploading…" : "No logo — drop an image here"}</span>}
+        </div>
+        <div className="actions" style={{ margin: 0 }}>
+          <button onClick={() => guideLogoInput.current?.click()} disabled={guideLogoBusy}>{cfg.guide.logo ? "Replace logo…" : "Upload logo…"}</button>
+          {cfg.guide.logo && <button onClick={removeGuideLogo} disabled={guideLogoBusy}>Remove</button>}
+          <input ref={guideLogoInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml,image/bmp" style={{ display: "none" }}
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void uploadGuideLogo(f); }} />
+        </div>
+      </div>
+      <div className="form">
+        <div className="row">
+          <label style={{ flex: 2 }}>Or a web address<input value={/^https?:\/\//i.test(cfg.guide.logo) ? cfg.guide.logo : ""} onChange={(e) => setG({ logo: e.target.value })} placeholder="https://…/logo.png — then Save settings" /></label>
         </div>
       </div>
       </>}

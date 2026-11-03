@@ -199,7 +199,7 @@ export async function generateNext(store: ConfigStore, root: string): Promise<Ap
   if (cfg.guide.enabled) {
     lineup.channels.push({
       number: cfg.guide.number, name: cfg.guide.name, config: `./channels/guide.config.json`,
-      tvg_id: cfg.guide.tvgId || "guide", logo: "", group: cfg.guide.group || "",
+      tvg_id: cfg.guide.tvgId || "guide", logo: publishedLogoUrl(cfg.guide.logo, logoBase), group: cfg.guide.group || "",
     });
   }
   // ErsatzTV next serves the M3U and XMLTV guide in lineup order (it doesn't

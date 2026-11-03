@@ -85,6 +85,7 @@ export interface NextConfig {
     enabled: boolean; number: string; name: string; group: string; tvgId: string;
     musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string;
     promoRotateSec: number; promoFolder: string;
+    logo: string; // "logos/<hash>.png" (uploaded, like channel logos) | a web address | "" for none
   };
   // HDHomeRun tuner emulation for Plex Live TV & DVR (src/server/hdhr.ts), on its
   // own port. `deviceId` is made once; Plex remembers the tuner by it.
@@ -97,7 +98,7 @@ export function defaultNextConfig(): NextConfig {
     video: { width: 1920, height: 1080, codec: "h264", bitDepth: 8, bitrateKbps: 2000, bufferKbps: 4000, accel: "", tonemapAlgorithm: "linear" },
     audio: { codec: "aac", bitrateKbps: 192, bufferKbps: 384, channels: 2, sampleRateHz: 48000, normalizeLoudness: true },
     upNext: { enabled: false, count: 3, durationMs: 12000, fontFile: "C:/Windows/Fonts/arialbd.ttf" },
-    guide: { enabled: false, number: "100", name: "Guide", group: "", tvgId: "guide", musicFolder: "", columns: 3, scrollSpeed: 60, refreshMin: 30, theme: "classic", promoRotateSec: 30, promoFolder: "" },
+    guide: { enabled: false, number: "100", name: "Guide", group: "", tvgId: "guide", musicFolder: "", columns: 3, scrollSpeed: 60, refreshMin: 30, theme: "classic", promoRotateSec: 30, promoFolder: "", logo: "" },
     hdhr: { enabled: false, port: 5004, tuners: 4, name: "tv-next-scheduler", deviceId: "" },
   };
 }

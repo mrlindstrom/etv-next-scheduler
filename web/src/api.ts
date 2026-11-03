@@ -65,7 +65,7 @@ export interface NextConfig {
   video: { width: number; height: number; codec: string; bitDepth: number; bitrateKbps: number; bufferKbps: number; accel: string; tonemapAlgorithm: string };
   audio: { codec: string; bitrateKbps: number; bufferKbps: number; channels: number; sampleRateHz: number; normalizeLoudness: boolean };
   upNext: { enabled: boolean; count: number; durationMs: number; fontFile: string };
-  guide: { enabled: boolean; number: string; name: string; group: string; tvgId: string; musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string; promoRotateSec: number; promoFolder: string };
+  guide: { enabled: boolean; number: string; name: string; group: string; tvgId: string; musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string; promoRotateSec: number; promoFolder: string; logo: string };
   hdhr: { enabled: boolean; port: number; tuners: number; name: string; deviceId: string };
 }
 export interface HdhrStatus {
@@ -161,6 +161,9 @@ export const api = {
   setChannelMeta: (name: string, patch: Partial<ChannelMeta>): Promise<ChannelMeta> => fetch(`/api/channels/${name}/meta`, opts("PUT", patch)).then(j),
   uploadChannelLogo: (name: string, file: File): Promise<ChannelMeta> =>
     fetch(`/api/channels/${encodeURIComponent(name)}/logo`, { method: "POST", headers: { "Content-Type": file.type && file.type.startsWith("image/") ? file.type : "image/png" }, body: file }).then(j),
+  uploadGuideLogo: (file: File): Promise<NextConfig> =>
+    fetch("/api/guide/logo", { method: "POST", headers: { "Content-Type": file.type && file.type.startsWith("image/") ? file.type : "image/png" }, body: file }).then(j),
+  removeGuideLogo: (): Promise<NextConfig> => fetch("/api/guide/logo", { method: "DELETE" }).then(j),
   removeChannelLogo: (name: string): Promise<ChannelMeta> => fetch(`/api/channels/${encodeURIComponent(name)}/logo`, { method: "DELETE" }).then(j),
   renumberChannels: (apply: boolean, start = 1): Promise<{ start: number; plan: { name: string; from: string; to: string; enabled: boolean }[]; changed: number; applied: boolean }> =>
     fetch("/api/channels/renumber", opts("POST", { apply, start })).then(j),
