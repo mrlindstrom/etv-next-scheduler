@@ -7,6 +7,8 @@
 //     to insert it; the canvas shows sample values
 //   - a "Picture by show" layer picks a picture from the pictures folder by a
 //     show detail (match:{{next_show}}) — see OverlayPictures.tsx
+//   - a reference picture or video frame can sit behind the canvas to line things
+//     up against (only in this browser tab: never uploaded, saved or shown on air)
 //   - "When it shows" sets the timing in plain words; "Show on channels" puts it
 //     on channels right here
 // Builds render each overlay per programme (see src/overlays.ts).
@@ -32,6 +34,11 @@ type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
 const uid = () => Math.random().toString(36).slice(2, 9);
+// The designer's reference picture / video, kept while this tab is open so it
+// stays put across overlays. A local file shown from the browser's memory.
+type RefBg = { url: string; name: string; video: boolean; t: number; dim: number };
+let lastRef: RefBg | null = null;
+const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, "0")}`;
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi, (m, k: string) => v[k.toLowerCase()] ?? m);
 const LAYER_LABEL: Record<Layer["type"], string> = { text: "Text", image: "Image", box: "Box", video: "Video" };
@@ -254,6 +261,21 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
   const fileRef = useRef<HTMLInputElement>(null);
   const vars = useMemo(() => Object.fromEntries(fields.map((f) => [f.key, f.sample])), [fields]);
   const [fieldSlot, setFieldSlot] = useState(1); // the show details list: which programme (0 = now, 1 = next…)
+  // reference behind the canvas (see lastRef)
+  const [ref, setRefState] = useState<RefBg | null>(lastRef);
+  const setRef = (r: RefBg | null) => { lastRef = r; setRefState(r); };
+  const [refDur, setRefDur] = useState(0);
+  const [refErr, setRefErr] = useState("");
+  const refInput = useRef<HTMLInputElement>(null);
+  const refVideo = useRef<HTMLVideoElement>(null);
+  const pickRef = (f: File) => {
+    if (lastRef) URL.revokeObjectURL(lastRef.url);
+    setRefErr(""); setRefDur(0);
+    setRef({ url: URL.createObjectURL(f), name: f.name, video: f.type.startsWith("video/") || /\.(mp4|mov|webm|mkv|m4v|avi|ts)$/i.test(f.name), t: 0, dim: 0 });
+  };
+  // the frame slider moves the (paused) video
+  useEffect(() => { const v = refVideo.current; if (v && ref?.video && Math.abs(v.currentTime - ref.t) > 0.005) v.currentTime = ref.t; }, [ref?.t, ref?.url]);
+  const seekRef = (t: number) => ref && setRef({ ...ref, t: Math.max(0, Math.min(refDur || t, t)) });
 
   // stage scale follows its width
   useEffect(() => {
@@ -495,10 +517,31 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
             <select className="ov-bg" value={bg} onChange={(e) => setBg(e.target.value as any)} title="Canvas background">
               <option value="dark">Dark background</option><option value="light">Light background</option><option value="check">Checkerboard</option>
             </select>
+            <button onClick={() => refInput.current?.click()} className={ref ? "active" : ""} title="Put a picture or a frame of a video behind the canvas to line things up against. Only for designing: it isn't uploaded, saved or shown on air.">{ref ? "Change reference…" : "Reference picture or video…"}</button>
+            <input ref={refInput} type="file" accept="image/*,video/*,.mkv,.ts,.avi" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) pickRef(f); e.target.value = ""; }} />
             <button onClick={() => { setExact(null); setPlaying((p) => !p); }} className={playing ? "active" : ""} disabled={!isAnimated(ov.layers)} title={isAnimated(ov.layers) ? "Play the in / out animation on the canvas" : "Pick an animation below first"}>{playing ? "■ Stop" : "▶ Play animation"}</button>
             <button onClick={checkRender} className={exact ? "active" : ""} disabled={busy} title="Show exactly what a build draws (the server's fonts)">{exact ? "Back to editing" : "Check exact render"}</button>
           </div>
 
+          {ref && (
+            <div className="ov-refbar">
+              <span className="muted" title={ref.name}>Reference: <b>{ref.name.length > 32 ? `${ref.name.slice(0, 30)}…` : ref.name}</b> — only for lining things up; not saved or shown on air</span>
+              {ref.video && refDur > 0 && (
+                <span className="ov-refscrub">
+                  <button className="ghost" onClick={() => seekRef(ref.t - 10)} title="Back 10 seconds">«</button>
+                  <button className="ghost" onClick={() => seekRef(ref.t - 1 / 30)} title="Back one frame">‹</button>
+                  <input type="range" min={0} max={refDur} step={1 / 30} value={ref.t} onChange={(e) => seekRef(Number(e.target.value))} aria-label="Frame" />
+                  <button className="ghost" onClick={() => seekRef(ref.t + 1 / 30)} title="Forward one frame">›</button>
+                  <button className="ghost" onClick={() => seekRef(ref.t + 10)} title="Forward 10 seconds">»</button>
+                  <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{clock(ref.t)} / {clock(refDur)}</span>
+                </span>
+              )}
+              {ref.video && !refDur && !refErr && <span className="muted">Loading the video…</span>}
+              <label className="ov-inline" title="Darken the reference so the layers stand out">Dim <input type="range" min={0} max={80} value={ref.dim} onChange={(e) => setRef({ ...ref, dim: Number(e.target.value) })} style={{ width: 80 }} /></label>
+              <button className="ghost" onClick={() => { URL.revokeObjectURL(ref.url); setRef(null); setRefErr(""); }}>Remove</button>
+              {refErr && <span className="err">{refErr}</span>}
+            </div>
+          )}
           <div ref={stageRef} className={`ov-stage bg-${bg}${dropHint ? " drop" : ""}`}
             onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerDown={() => setSel(null)}
             onDragOver={(e) => { e.preventDefault(); setDropHint(true); }} onDragLeave={() => setDropHint(false)}
@@ -508,6 +551,20 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
               const r = stageRef.current!.getBoundingClientRect();
               addFile(f, { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale });
             }}>
+            {/* shown fitted on black, the way next fits a show into the frame */}
+            {ref && (ref.video
+              ? <video key={ref.url} ref={refVideo} className="ov-ref" src={ref.url} muted playsInline preload="auto"
+                  onLoadedMetadata={(e) => {
+                    const d = e.currentTarget.duration;
+                    setRefDur(Number.isFinite(d) ? d : 0);
+                    // start a little way in: the first frame is often black
+                    const t = ref.t || Math.min(Number.isFinite(d) ? d / 10 : 0, 120);
+                    e.currentTarget.currentTime = t;
+                    if (t !== ref.t) setRef({ ...ref, t });
+                  }}
+                  onError={() => setRefErr("This browser can't play that video. An MP4 (H.264) or WebM works — or use a screenshot.")} />
+              : <img key={ref.url} className="ov-ref" src={ref.url} alt="" onError={() => setRefErr("That picture couldn't be shown.")} />)}
+            {ref && ref.dim > 0 && <div className="ov-ref" style={{ background: `rgba(0,0,0,${ref.dim / 100})` }} />}
             <div className="ov-safe" style={{ inset: `${SAFE * 100}%` }} />
             {exact ? (
               <img className="ov-exact" src={exact.png} style={{ left: exact.box.x * scale, top: exact.box.y * scale, width: exact.box.w * scale, height: exact.box.h * scale }} alt="" />

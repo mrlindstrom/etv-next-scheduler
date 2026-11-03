@@ -523,6 +523,12 @@ th[aria-sort=ascending], th[aria-sort=descending] { color: var(--accent-hi); }
 .ov-stage.bg-check { background: repeating-conic-gradient(#3a4252 0% 25%, #2a303c 0% 50%) 50% / 24px 24px; }
 .ov-stage.drop { outline: 3px dashed var(--accent); outline-offset: -6px; }
 .ov-safe { position: absolute; border: 1px dashed rgba(255,255,255,.18); pointer-events: none; }
+/* overlay designer: reference picture / video frame behind the canvas */
+.ov-ref { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; pointer-events: none; }
+.ov-refbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; font-size: 13px; }
+.ov-refscrub { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 260px; }
+.ov-refscrub input[type=range] { flex: 1; min-width: 120px; }
+.ov-refscrub .ghost { padding: 2px 7px; }
 .ov-layer { position: absolute; cursor: move; }
 .ov-layer:hover { outline: 1px solid rgba(79,140,255,.6); }
 .ov-layer.sel { outline: 2px solid var(--accent); }
