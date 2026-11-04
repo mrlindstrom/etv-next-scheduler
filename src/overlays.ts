@@ -27,6 +27,7 @@ import { localParts, type Tz } from "./time.js";
 import { layerState, layerStateAt, hasLayerTiming, fadeAt, stateBox, animLengths, isAnimated, FULL, type LayerAnim, type LayerAppear, type LayerState } from "./overlay-anim.js";
 import { holidayDate } from "./holidays.js";
 import { spawn } from "node:child_process";
+import { cpus } from "node:os";
 
 export const ARTBOARD = { w: 1920, h: 1080 };
 
@@ -369,16 +370,19 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string, 
 }
 
 let Resvg: any = undefined;
+let RenderAsync: ((svg: string, opts: object) => Promise<{ asPng(): Uint8Array }>) | null = null;
 async function resvg(): Promise<any | null> {
   if (Resvg !== undefined) return Resvg;
-  try { Resvg = (await import("@resvg/resvg-js")).Resvg; } catch { Resvg = null; }
+  try { const m = await import("@resvg/resvg-js"); Resvg = m.Resvg; RenderAsync = (m as any).renderAsync ?? null; } catch { Resvg = null; }
   return Resvg;
 }
 /** Rasterize an overlay SVG to PNG (null if the rasterizer isn't installed). */
 export async function rasterize(svg: string): Promise<Buffer | null> {
   const R = await resvg();
   if (!R) return null;
-  return Buffer.from(new R(svg, { font: fontOptions(svg), background: "rgba(0,0,0,0)" }).render().asPng());
+  const opts = { font: fontOptions(svg), background: "rgba(0,0,0,0)" };
+  if (RenderAsync) return Buffer.from((await RenderAsync(svg, opts)).asPng());
+  return Buffer.from(new R(svg, opts).render().asPng());
 }
 /** Font options for one drawing: loading every system font costs ~150 ms a
  *  drawing, so hand over just the families it uses. */
@@ -617,7 +621,7 @@ export const isTimed = (o: Overlay) => (o.timing?.mode ?? "always") !== "always"
 /** The overlay's transition clip for these template values (cached by content):
  *  the file, and where it sits in output pixels. */
 async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
-  problems: string[]): Promise<{ file: string; origin: { x: number; y: number } } | null> {
+  problems: string[]): Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null> {
   const out = opts.output!, t = o.timing ?? { mode: "always" };
   const sx = out.w / ARTBOARD.w, sy = out.h / ARTBOARD.h;
   const { inMs, outMs } = animLengths(o.layers);
@@ -673,26 +677,32 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   // render each distinct frame once
   const tmp = join(opts.cacheDir, `tmp-${key}`);
   await mkdir(tmp, { recursive: true });
-  const pngs = new Map<string, string>();
-  const frameFile = async (states: LayerState[] | null): Promise<string | null> => {
+  // each distinct frame drawn once; frames draw at the same time (resvg's threads)
+  const pngs = new Map<string, Promise<string | null>>();
+  let nFrame = 0;
+  const frameFile = (states: LayerState[] | null): Promise<string | null> => {
     const k = states ? stateKey(states) : "blank";
-    if (pngs.has(k)) return pngs.get(k)!;
-    const svg = states ? overlaySvg(o, v, readAsset, { states, view, px: { w: pw, h: ph } })?.svg
-      : `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"/>`;
-    const png = svg ? await rasterize(svg) : null;
-    if (!png) return null;
-    const p = join(tmp, `f${String(pngs.size).padStart(4, "0")}.png`);
-    await writeFile(p, png);
-    pngs.set(k, p);
-    return p;
+    const have = pngs.get(k);
+    if (have) return have;
+    const job = (async () => {
+      const svg = states ? overlaySvg(o, v, readAsset, { states, view, px: { w: pw, h: ph } })?.svg
+        : `<svg xmlns="http://www.w3.org/2000/svg" width="${pw}" height="${ph}"/>`;
+      const png = svg ? await rasterize(svg) : null;
+      if (!png) return null;
+      const p = join(tmp, `f${String(nFrame++).padStart(4, "0")}.png`);
+      await writeFile(p, png);
+      return p;
+    })();
+    pngs.set(k, job);
+    return job;
   };
   const appearances = mode === "every" ? Math.min(400, Math.ceil((6 * 3_600_000) / freq) + 2) : 1;
   const frames: { t: number; file: string }[] = [];
   const blank = await frameFile(null);
   if (!blank) { problems.push("animated overlays need the SVG rasterizer (@resvg/resvg-js) — run npm install"); return null; }
   frames.push({ t: 0, file: blank });
-  const rendered: { t: number; file: string }[] = [];
-  for (const f of app) { const p = f.states ? await frameFile(f.states) : blank; if (p) rendered.push({ t: f.t, file: p }); }
+  const drawn = await Promise.all(app.map(async (f) => ({ t: f.t, file: f.states ? await frameFile(f.states) : blank })));
+  const rendered = drawn.filter((f): f is { t: number; file: string } => !!f.file);
   for (let k = 0; k < appearances; k++) for (const f of rendered) frames.push({ t: CLIP_AT + k * freq + f.t, file: f.file });
   frames.sort((a, b) => a.t - b.t);
   const list = ["ffconcat version 1.0"];
@@ -709,7 +719,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   try { await rm(tmp, { recursive: true, force: true }); } catch { /* ignore */ }
   if (err || !existsSync(partial)) { problems.push(`couldn't encode an animated overlay: ${err || "no output"}`); return null; }
   await rename(partial, file);
-  return { file, origin: { x: ox, y: oy } };
+  return { file, origin: { x: ox, y: oy }, made: true };
 }
 
 /** An SVG file drawn to a cached PNG `w` pixels wide (null if it can't be). */
@@ -731,6 +741,8 @@ export interface OverlayResult { items: number; rendered: number; problems: stri
 /** Turn the engine's overlay refs into graphics layers on the playout items. */
 export async function applyOverlays(
   items: PlayoutItem[], refs: Map<string, string[]>, labels: Record<string, ItemLabel>, guide: GuideEntry[], tz: Tz, opts: OverlayBuildOptions,
+  /** progress lines for the build log ("overlays: 12 of 40 animated clips ready…") */
+  report?: (msg: string) => void,
 ): Promise<OverlayResult> {
   const out: OverlayResult = { items: 0, rendered: 0, problems: [] };
   // overlays set off by one file: on every channel, wherever that file airs
@@ -768,12 +780,17 @@ export async function applyOverlays(
     return assets.get(p)!;
   };
   // rendered stills, by overlay + resolved text (a show's strap renders once per build)
-  const stills = new Map<string, { file: string; box: Box } | null>();
+  const stills = new Map<string, Promise<{ file: string; box: Box } | null>>();
   await mkdir(opts.cacheDir, { recursive: true });
-  const still = async (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
-    const texts = drawnKey(o, v);
-    const key = `${JSON.stringify(o.layers)}|${JSON.stringify(texts)}`;
-    if (stills.has(key)) return stills.get(key)!;
+  const still = (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
+    const key = `${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}`;
+    const have = stills.get(key);
+    if (have) return have;
+    const job = renderStill(o, v);
+    stills.set(key, job);
+    return job;
+  };
+  const renderStill = async (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
     let r: { file: string; box: Box } | null = null;
     const only = o.layers.length === 1 && o.layers[0].type === "image" ? o.layers[0] : null;
     if (only) {
@@ -807,8 +824,38 @@ export async function applyOverlays(
         else out.problems.push("text overlays need the SVG rasterizer (@resvg/resvg-js) — run npm install");
       }
     }
-    stills.set(key, r);
     return r;
+  };
+
+  // animated clips: one per distinct drawing, several at once (each encodes in its
+  // own ffmpeg), with progress lines while they're made
+  const CLIP_JOBS = Math.max(1, Math.min(6, (cpus()?.length ?? 2) - 1));
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  const slot = async <T>(fn: () => Promise<T>): Promise<T> => {
+    if (active >= CLIP_JOBS) await new Promise<void>((go) => waiting.push(go));
+    active++;
+    try { return await fn(); } finally { active--; waiting.shift()?.(); }
+  };
+  const clips = new Map<string, Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null>>();
+  let clipsDone = 0, clipsMade = 0, lastReport = 0;
+  const t0 = Date.now();
+  const progress = () => {
+    if (!report) return;
+    const now = Date.now();
+    if (now - lastReport < 5000 && clipsDone < clips.size) return;
+    lastReport = now;
+    if (clipsDone < clips.size) report(`overlays: ${clipsDone} of ${clips.size} animated overlay clips ready (${clipsMade} newly drawn, ${CLIP_JOBS} at a time)…`);
+  };
+  const clipFor = (o: Overlay, v: OverlayVars) => {
+    const k = `${o.id}|${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}`;
+    let job = clips.get(k);
+    if (!job) {
+      if (!clips.size) report?.(`overlays: preparing animated overlay clips (${CLIP_JOBS} at a time)…`);
+      job = slot(() => animatedClip(o, v, readAsset, opts, out.problems)).then((r) => { clipsDone++; if (r?.made) clipsMade++; progress(); return r; });
+      clips.set(k, job);
+    }
+    return job;
   };
 
   // each programme's own span: from its first to its last programme (non-filler)
@@ -831,6 +878,7 @@ export async function applyOverlays(
     (lab.overlays ??= []).push({ id, at: Math.round(at) });
   };
   let gi = 0;
+  const jobs: Promise<void>[] = [];
   for (const item of items) {
     const path = (item.source as { path?: string } | undefined)?.path;
     const ids = [...(refs.get(item.id) ?? []), ...(path ? byMedia.get(mediaKey(path)) ?? [] : [])];
@@ -841,6 +889,7 @@ export async function applyOverlays(
     const n0 = cur ? gi + 1 : gi;
     const next = Array.from({ length: UPCOMING_FIELDS }, (_, k) => g[n0 + k]);
     const filler = !!labels[item.id]?.fillerKind;
+    jobs.push((async () => {
     const layers: GraphicsLayer[] = [];
     let vars: OverlayVars | null = null;
     for (const ref of [...new Set(ids)]) {
@@ -857,7 +906,7 @@ export async function applyOverlays(
         const plan = animPlan(o, s, f, progSpan);
         if (!plan) continue;
         vars ??= overlayVars(cur, next, tz, { name: opts.channelName, number: opts.channelNumber });
-        const clip = await animatedClip(o, vars, readAsset, opts, out.problems);
+        const clip = await clipFor(o, vars);
         if (clip) {
           layers.push({ source: { source_type: "local", path: clip.file, in_point_ms: Math.max(0, Math.round(CLIP_AT - plan.offset)) }, kind: "canvas", location: "top_left", layout: { mode: "region", origin: clip.origin } } as GraphicsLayer);
           out.canvas = true;
@@ -896,7 +945,10 @@ export async function applyOverlays(
       }
     }
     if (layers.length) { item.graphics = [...layers, ...(item.graphics ?? [])]; out.items++; }
+    })());
   }
+  await Promise.all(jobs);
+  if (clips.size) report?.(`overlays: ${clips.size} animated overlay clip${clips.size === 1 ? "" : "s"} ready — ${clipsMade} newly drawn, ${clips.size - clipsMade} reused — in ${Math.round((Date.now() - t0) / 100) / 10} s`);
   for (const m of missing) out.problems.push(`overlay "${m}" isn't in the overlay library`);
   if (unmatched.size) {
     const names = [...unmatched].sort((a, b) => a.localeCompare(b));

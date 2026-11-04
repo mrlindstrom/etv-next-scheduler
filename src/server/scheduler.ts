@@ -135,7 +135,8 @@ export class Scheduler {
             sourceXmltv: src ? join(xmltvDir, `${this.store.channelMeta(src)?.tvgId || src}.xml`) : undefined,
             options: { startMs: startInstant, finishMs: targetEnd, tz: c.tz, seed: hashName(name), progress: this.store.getProgress(name),
               preferredAudioLang: cm?.audioLang || undefined, subtitles: cm?.subtitles || undefined,
-              upNext: await upNextOptionsFor(this.store, name, this.root), overlays: overlayOptionsFor(this.store, name, this.root) },
+              upNext: await upNextOptionsFor(this.store, name, this.root), overlays: overlayOptionsFor(this.store, name, this.root),
+              log: (msg: string) => this.note(`  ${name}: ${msg}`) },
           });
           this.store.saveProgress(name, res.progress);
           try {

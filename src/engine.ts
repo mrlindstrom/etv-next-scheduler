@@ -38,6 +38,8 @@ export interface BuildOptions {
   upNext?: UpNextOptions;
   /** The overlay library and this channel's own overlays (see overlays.ts). */
   overlays?: OverlayBuildOptions;
+  /** Progress lines for the build log (slow steps, e.g. drawing overlay clips). */
+  log?: (msg: string) => void;
 }
 
 /** Config for the live "up next" graphics canvas. The card is a full-frame RGBA

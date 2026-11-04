@@ -97,6 +97,7 @@ async function handle(req: BuildWorkerRequest): Promise<void> {
           seed: c.seed, progress: c.progress,
           preferredAudioLang: c.audioLang || undefined, subtitles: c.subtitles || undefined,
           upNext: c.upNext, overlays: c.overlays,
+          log: (msg: string) => post({ type: "log", msg: `${c.name}: ${msg}` }),
         },
       });
       let xmltvWarn: string | undefined;

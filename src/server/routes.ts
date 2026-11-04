@@ -1325,7 +1325,7 @@ async function runBuild(jobId: string, channels: string[], cfg: any, days: numbe
       { libDbPath: dbPath!, disabledLibs: store.disabledLibraryIds(), excludeSpecials: !cfg.includeSpecials, tz, xmltvMode: "write", now, channels: specs,
         artBase: schedulerBaseUrl(store.getNextConfig().publicUrl, Number(process.env.PORT ?? 8730)) },
       (m: any) => {
-        if (m.type === "log") { job.log.push(`  ${m.msg}`); return; }
+        if (m.type === "log") { job.log.push(`  ${m.msg}`); appLog("build", String(m.msg)); return; }
         if (m.type === "result") {
           store.saveProgress(m.name, m.progress); // resume episode order on next build
           if (m.xmltvWarn) job.log.push(`  ${m.name}: xmltv warning ${m.xmltvWarn}`);
