@@ -9,7 +9,7 @@
 //                             named by the people adding them, so the name is the match.
 //                             Settings can point it elsewhere (e.g. a shared folder).
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, statSync, unlinkSync, rmSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, isAbsolute, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,7 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
     channelName: meta?.name ?? channelName,
     channelNumber: meta?.number ?? "",
     examplesDir: overlayExamplesDir(root),
+    liveBase: `http://127.0.0.1:${Number(process.env.PORT ?? 8730)}`,
     picturesDir: overlayPicturesDir(store, root),
     ffmpeg: existsSync(ff) ? ff : (nc.ffmpegPath || "ffmpeg"),
     output: { w: nc.video?.width || 1920, h: nc.video?.height || 1080 },
@@ -134,14 +135,18 @@ export function overlayAssetFile(dir: string, file: string): string | null {
   return /^[0-9A-F]{32}\.[a-z0-9]{2,4}$/.test(file) ? join(dir, file) : null;
 }
 
-/** Delete rendered PNGs nothing has used for `days` (builds touch what they reuse). */
+/** Delete rendered stills and animated clips nothing has used for `days` (builds
+ *  touch what they reuse), and leftovers of interrupted builds (a day old). */
 export function pruneOverlayCache(dir: string, days = 14): number {
   if (!existsSync(dir)) return 0;
-  const cutoff = Date.now() - days * 86_400_000;
+  const cutoff = Date.now() - days * 86_400_000, stale = Date.now() - 86_400_000;
   let n = 0;
   for (const f of readdirSync(dir)) {
-    if (!/^[0-9a-f]{40}\.png$/.test(f)) continue;
-    try { if (statSync(join(dir, f)).mtimeMs < cutoff) { unlinkSync(join(dir, f)); n++; } } catch { /* in use */ }
+    const p = join(dir, f);
+    try {
+      if (/^[0-9a-f]{40}\.(png|mkv)$/.test(f)) { if (statSync(p).mtimeMs < cutoff) { unlinkSync(p); n++; } }
+      else if (/^[0-9a-f]{40}\.part\.mkv$/.test(f) || /^tmp-[0-9a-f]{40}$/.test(f)) { if (statSync(p).mtimeMs < stale) { rmSync(p, { recursive: true, force: true }); n++; } }
+    } catch { /* in use */ }
   }
   return n;
 }

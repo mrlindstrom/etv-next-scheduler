@@ -83,7 +83,8 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
   // the guide and attach the rendered graphics layers.
   let overlayProblems: string[] | undefined;
   if (req.options.overlays) {
-    const r = await applyOverlays(playout.items, engine.getOverlayRefs(), engine.getLabels(), engine.getGuide(), req.options.tz, req.options.overlays, req.options.log);
+    const r = await applyOverlays(playout.items, engine.getOverlayRefs(), engine.getLabels(), engine.getGuide(), req.options.tz, req.options.overlays, req.options.log,
+      (p: string) => (req.resolver as { templateData?: (p: string) => import("./legacy-graphics.js").LegacyItemData | null }).templateData?.(p) ?? null);
     if (r.items) playout.version = r.canvas ? PLAYOUT_VERSION_LAYOUT : PLAYOUT_VERSION_GRAPHICS;
     if (r.problems.length) overlayProblems = r.problems;
   }

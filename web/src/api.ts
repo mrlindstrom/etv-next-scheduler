@@ -31,7 +31,11 @@ export interface OverlayMedia { path: string; title?: string; durationMs?: numbe
 /** One frame of a library file (drawn by the server's ffmpeg), for the designer's reference. */
 export const referenceFrameUrl = (path: string, t: number) => `/api/overlays/reference-frame?path=${encodeURIComponent(path)}&t=${t.toFixed(2)}`;
 export type OverlayLocation = "top_left" | "top_center" | "top_right" | "center_left" | "center" | "center_right" | "bottom_left" | "bottom_center" | "bottom_right";
-export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
+/** An imported ErsatzTV legacy graphics element (its YAML as written; filled in per item by builds). */
+export interface LegacyElement { kind: "image" | "text" | "motion" | "subtitle" | "script"; yaml: string; file?: string }
+export interface LegacyImported { id: string; name: string; kind: string; file: string; replaced: boolean; warnings: string[] }
+export interface LegacyTest { item: { path: string; name: string; start: string; finish: string }; vars: [string, string][]; yaml: string; layers: Record<string, unknown>[]; problems: string[]; timing: string; preview: string | null; guideFound: boolean; error?: string }
+export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; motion?: "live" | "rendered"; legacy?: LegacyElement; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
 export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }
 export interface OverlayMoment { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }
 export interface OverlayField { key: string; label: string; sample: string; slot?: number }
@@ -278,6 +282,10 @@ export const api = {
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
   overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; slots?: string[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
   overlayPictures: (): Promise<OverlayPictures> => fetch("/api/overlays/pictures").then(j),
+  legacyFolder: (folder = ""): Promise<{ folder: string; exists: boolean; files: { file: string; kind: string }[] }> => fetch(`/api/overlays/legacy-folder?folder=${encodeURIComponent(folder)}`).then(j),
+  legacyImport: (items: { file: string; text: string; kind?: string }[]): Promise<{ imported: LegacyImported[] }> => fetch("/api/overlays/legacy-import", opts("POST", { items })).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
+  legacyImportFolder: (folder: string): Promise<{ imported: LegacyImported[] }> => fetch("/api/overlays/legacy-import-folder", opts("POST", { folder })).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
+  legacyTest: (overlay: Overlay, channel: string, match?: string, at?: number): Promise<LegacyTest> => fetch("/api/overlays/legacy-test", opts("POST", { overlay, channel, match, at })).then(j),
   uploadOverlayPicture: (file: File, folder = ""): Promise<{ name: string }> =>
     fetch("/api/overlays/pictures", { method: "POST", headers: { "Content-Type": file.type && /^(image|video)\//.test(file.type) ? file.type : "application/octet-stream", "x-file-name": encodeURIComponent(file.name), "x-folder": encodeURIComponent(folder) }, body: file }).then(j),
   deleteOverlayPicture: (name: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/pictures?name=${encodeURIComponent(name)}`, { method: "DELETE" }).then(j),

@@ -24,8 +24,9 @@ import type { GraphicsLayer, PeriodicTiming, PlayoutItem, WatermarkLocation } fr
 import type { GuideEntry, ItemLabel } from "./engine.js";
 import { formatClock } from "./upnext-ass.js";
 import { localParts, type Tz } from "./time.js";
-import { layerState, layerStateAt, hasLayerTiming, fadeAt, stateBox, animLengths, isAnimated, FULL, type LayerAnim, type LayerAppear, type LayerState } from "./overlay-anim.js";
+import { layerState, layerStateAt, hasLayerTiming, fadeAt, stateBox, animLengths, isAnimated, drawsLive, liveFadeMs, layerWindow, FULL, type LayerAnim, type LayerAppear, type LayerState } from "./overlay-anim.js";
 import { holidayDate } from "./holidays.js";
+import { legacyLayers, legacyRef, type LegacyElement, type LegacyItemData } from "./legacy-graphics.js";
 import { spawn } from "node:child_process";
 import { cpus } from "node:os";
 
@@ -75,6 +76,14 @@ export interface Overlay {
   anchor?: { location: WatermarkLocation; hMargin: number; vMargin: number; widthPercent?: number };
   /** Only around a holiday (days before / after it) or between two dates every year. */
   season?: OverlaySeason;
+  /** How it moves: "live" = drawn live by the scheduler, fades only (no pre-render);
+   *  "rendered" = pre-rendered clips with every animation; unset = live when it only fades. */
+  motion?: "live" | "rendered";
+  /** a renamed copy (the Troubleshooting preview): the saved overlay its live layers draw */
+  liveId?: string;
+  /** an imported ErsatzTV legacy graphics element: filled in per item at build time
+   *  (legacy-graphics.ts) instead of drawn from `layers` */
+  legacy?: LegacyElement;
   /** Where an example overlay came from (examples/overlays), and its group in the picker. */
   category?: string;
   description?: string;
@@ -94,6 +103,9 @@ export interface OverlayBuildOptions {
   examplesDir?: string;
   /** the pictures folder `match:` sources pick from */
   picturesDir?: string;
+  /** this scheduler's address as next reaches it, for overlays drawn live
+   *  (`${liveBase}/graphics/overlay.png`); without it they're pre-rendered */
+  liveBase?: string;
   /** animated overlays: ffmpeg to encode their transition clips, and the output size they're drawn at */
   ffmpeg?: string;
   output?: { w: number; h: number };
@@ -405,18 +417,72 @@ function fontIndex(): Map<string, string[]> {
     ? [join(process.env.WINDIR || "C:/Windows", "Fonts"), join(process.env.LOCALAPPDATA || join(home, "AppData", "Local"), "Microsoft", "Windows", "Fonts")]
     : process.platform === "darwin" ? ["/System/Library/Fonts", "/Library/Fonts", join(home, "Library", "Fonts")]
     : ["/usr/share/fonts", "/usr/local/share/fonts", join(home, ".fonts"), join(home, ".local", "share", "fonts")];
-  const walk = (d: string, depth: number) => {
-    let names: string[] = [];
-    try { names = readdirSync(d); } catch { return; }
-    for (const n of names) {
-      const p = join(d, n);
-      if (/\.(ttf|otf)$/i.test(n)) {
-        for (const fam of fontFamilies(p)) { const k = fam.toLowerCase(); const list = FONTS!.get(k) ?? []; if (!list.includes(p)) list.push(p); FONTS!.set(k, list); }
-      } else if (depth < 4 && !n.includes(".")) walk(p, depth + 1);
-    }
-  };
-  for (const d of dirs) walk(d, 0);
+  for (const d of dirs) scanFonts(d, 0);
   return FONTS;
+}
+function scanFonts(d: string, depth: number) {
+  let names: string[] = [];
+  try { names = readdirSync(d); } catch { return; }
+  for (const n of names) {
+    const p = join(d, n);
+    if (/\.(ttf|otf)$/i.test(n)) {
+      for (const fam of fontFamilies(p)) { const k = fam.toLowerCase(); const list = FONTS!.get(k) ?? []; if (!list.includes(p)) list.push(p); FONTS!.set(k, list); }
+    } else if (depth < 4 && !n.includes(".")) scanFonts(p, depth + 1);
+  }
+}
+const extraFontDirs = new Set<string>();
+/** Make a folder's fonts available to drawings (legacy text elements' include_fonts_from). */
+export function addFontDir(dir: string): void {
+  fontIndex();
+  const k = dir.replace(/\\/g, "/").toLowerCase();
+  if (extraFontDirs.has(k)) return;
+  extraFontDirs.add(k);
+  scanFonts(dir, 0);
+}
+/** The drawn (ink) box of an SVG, with the same fonts as rasterize — to measure text. */
+export async function svgBBox(svg: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  const R = await resvg();
+  if (!R) return null;
+  try { const b = new R(svg, { font: fontOptions(svg) }).getBBox(); return b ? { x: b.x, y: b.y, width: b.width, height: b.height } : null; } catch { return null; }
+}
+/** How a Windows-style family name ("Montserrat ExtraBold") is asked for by
+ *  typographic family and weight ("Montserrat", 800), as the renderer matches fonts. */
+export function fontAlias(name: string): { family: string; weight?: number; italic?: boolean } {
+  const files = fontIndex().get(name.trim().toLowerCase());
+  if (!files?.length) return { family: name };
+  const n = fontNames(files[0]);
+  if (!n[16] || n[16].toLowerCase() === name.trim().toLowerCase()) return { family: name };
+  const sub = (n[17] || n[2] || "").toLowerCase().replace(/\s+/g, "");
+  const WEIGHTS: [RegExp, number][] = [[/thin|hairline/, 100], [/extralight|ultralight/, 200], [/semilight|demilight/, 350], [/light/, 300], [/medium/, 500], [/semibold|demibold/, 600], [/extrabold|ultrabold/, 800], [/black|heavy/, 900], [/bold/, 700]];
+  const w = WEIGHTS.find(([re]) => re.test(sub))?.[1];
+  return { family: n[16], ...(w ? { weight: w } : {}), ...(/italic|oblique/.test(sub) ? { italic: true } : {}) };
+}
+/** A font file's name table entries 1, 2, 16 and 17 (family, style, typographic family / style). */
+function fontNames(file: string): Record<number, string> {
+  const out: Record<number, string> = {};
+  try {
+    const fd = openSync(file, "r");
+    try {
+      const head = Buffer.alloc(12 + 16 * 64);
+      readSync(fd, head, 0, head.length, 0);
+      const n = head.readUInt16BE(4);
+      let off = 0, len = 0;
+      for (let i = 0; i < Math.min(n, 64); i++) if (head.toString("latin1", 12 + i * 16, 16 + i * 16) === "name") { off = head.readUInt32BE(20 + i * 16); len = head.readUInt32BE(24 + i * 16); }
+      if (!off || len > 1_000_000) return out;
+      const t = Buffer.alloc(len);
+      readSync(fd, t, 0, len, off);
+      const count = t.readUInt16BE(2), strings = t.readUInt16BE(4);
+      for (let i = 0; i < count; i++) {
+        const r = 6 + i * 12;
+        const platform = t.readUInt16BE(r), id = t.readUInt16BE(r + 6), l = t.readUInt16BE(r + 8), o = t.readUInt16BE(r + 10);
+        if (![1, 2, 16, 17].includes(id) || (out[id] && platform !== 3)) continue;
+        const raw = t.subarray(strings + o, strings + o + l);
+        const s = (platform === 3 || platform === 0 ? Buffer.from(raw).swap16().toString("utf16le") : raw.toString("latin1")).trim();
+        if (s) out[id] = s;
+      }
+    } finally { closeSync(fd); }
+  } catch { /* unreadable */ }
+  return out;
 }
 /** A font file's family names (name table IDs 1 and 16), read from its header. */
 function fontFamilies(file: string): string[] {
@@ -608,6 +674,66 @@ function runFfmpeg(ffmpeg: string, args: string[]): Promise<string> {
   });
 }
 
+/** The show details a set of layers uses (so a live layer's address carries only those). */
+function usedVars(layers: OverlayLayer[], v: OverlayVars): OverlayVars {
+  const out: OverlayVars = {};
+  for (const l of layers) {
+    const strs = l.type === "text" ? [l.text] : l.type === "image" || l.type === "video" ? [l.src, l.fallback ?? ""] : [];
+    for (const str of strs) for (const m of String(str).matchAll(/\{\{\s*([a-z0-9_]+)\s*\}\}/gi)) { const k = m[1].toLowerCase(); if (v[k] != null) out[k] = v[k]; }
+  }
+  return out;
+}
+
+/** An overlay drawn live: next graphics layers for one appearance (overlay-level
+ *  timing `base`). Neighbouring layers with the same time on screen share a PNG. */
+function liveLayers(o: Overlay, v: OverlayVars, base: PeriodicTiming, opts: OverlayBuildOptions): GraphicsLayer[] {
+  const showMs = Math.max(1, num(o.timing?.showSeconds, 10)) * 1000;
+  const W = opts.output?.w ?? 1920, H = opts.output?.h ?? 1080;
+  const wall = base.clock === "wall";
+  const common = {
+    ...(o.opacity != null && o.opacity < 100 ? { opacity_percent: Math.max(0, o.opacity) } : {}),
+    ...(o.withinContent ? { within_source_content: true } : {}),
+  };
+  const timingFor = (l: OverlayLayer) => {
+    const w = layerWindow(l, showMs);
+    const start = Math.min(w.end, w.start + Math.max(0, num(l.anim?.in?.delay, 0)) * 1000), len = w.end - start;
+    if (len <= 0) return null;
+    const fade = Math.max(20, Math.min(liveFadeMs(l, o.fadeSeconds), len / 3));
+    let phase = (base.phase_offset_ms ?? 0) + start;
+    if (wall) phase = ((phase % base.frequency_ms) + base.frequency_ms) % base.frequency_ms;
+    return { timing_type: "periodic" as const, clock: base.clock, frequency_ms: base.frequency_ms, phase_offset_ms: Math.round(phase), hold_ms: Math.round(len - 2 * fade), fade_ms: Math.round(fade) };
+  };
+  const out: GraphicsLayer[] = [];
+  let run: { idx: number[]; timing: ReturnType<typeof timingFor> & object; key: string } | null = null;
+  const flush = () => {
+    if (!run) return;
+    const q = new URLSearchParams({ o: o.liveId ?? o.id, l: run.idx.join(","), w: String(W), h: String(H),
+      ...(opts.channelName ? { c: opts.channelName } : {}),
+      d: Buffer.from(JSON.stringify(usedVars(run.idx.map((i) => o.layers[i]), v))).toString("base64url") });
+    out.push({ kind: "media", location: "top_left",
+      source: { source_type: "http", uri: `${opts.liveBase!.replace(/\/+$/, "")}/graphics/overlay.png?${q}`, reconnect: true,
+        probe_hint: { format_name: "png_pipe", video: [{ stream_index: 0, codec: "png", width: W, height: H, pix_fmt: "rgba" }] } },
+      timing: run.timing, ...common } as GraphicsLayer);
+    run = null;
+  };
+  o.layers.forEach((l, i) => {
+    const t = timingFor(l);
+    if (!t) return;
+    if (l.type === "video") {
+      flush();
+      const want = resolveSrc(l.src, v);
+      const p = assetPath(want, opts.assetsDir, opts.channelLogo, "video") || assetPath(resolveSrc(l.fallback, v), opts.assetsDir, opts.channelLogo, "video");
+      if (p && existsSync(p)) out.push({ source: { source_type: "local", path: p }, ...placement(l), kind: "media", timing: t, ...common } as GraphicsLayer);
+      return;
+    }
+    const key = JSON.stringify(t);
+    if (run && run.key === key) run.idx.push(i);
+    else { flush(); run = { idx: [i], timing: t, key }; }
+  });
+  flush();
+  return out;
+}
+
 /** A file path compared the way the file system does (Windows: any case, either slash). */
 const mediaKey = (p: string) => (/^[A-Za-z]:|\\/.test(p) ? p.replace(/\\/g, "/").toLowerCase() : p);
 
@@ -743,6 +869,8 @@ export async function applyOverlays(
   items: PlayoutItem[], refs: Map<string, string[]>, labels: Record<string, ItemLabel>, guide: GuideEntry[], tz: Tz, opts: OverlayBuildOptions,
   /** progress lines for the build log ("overlays: 12 of 40 animated clips ready…") */
   report?: (msg: string) => void,
+  /** library details for a file (legacy graphics elements' MediaItem_* variables) */
+  itemInfo?: (path: string) => LegacyItemData | null,
 ): Promise<OverlayResult> {
   const out: OverlayResult = { items: 0, rendered: 0, problems: [] };
   // overlays set off by one file: on every channel, wherever that file airs
@@ -756,7 +884,13 @@ export async function applyOverlays(
   await resvg();
   const lib = new Map<string, Overlay>();
   for (const o of opts.library) { lib.set(o.id, o); if (!lib.has(o.name.toLowerCase())) lib.set(o.name.toLowerCase(), o); }
-  const find = (ref: string): Overlay | null => lib.get(ref) ?? lib.get(ref.toLowerCase()) ?? (IMAGE_FILE.test(ref) && existsSync(ref) ? adHocOverlay(ref) : null);
+  // legacy elements also answer to the file name legacy used ("image/cn_city.yml")
+  for (const o of opts.library) if (o.legacy?.file) { const k = `legacy:${legacyRef(o.legacy.file)}`; if (!lib.has(k)) lib.set(k, o); }
+  const find = (ref: string): Overlay | null => lib.get(ref) ?? lib.get(ref.toLowerCase()) ?? lib.get(`legacy:${legacyRef(ref)}`)
+    ?? (IMAGE_FILE.test(ref) && existsSync(ref) ? adHocOverlay(ref) : null);
+  const infoCache = new Map<string, LegacyItemData | null>();
+  const info = (p: string) => { if (!infoCache.has(p)) { let d: LegacyItemData | null = null; try { d = itemInfo?.(p) ?? null; } catch { /* no library */ } infoCache.set(p, d); } return infoCache.get(p)!; };
+  const ffprobe = opts.ffmpeg ? opts.ffmpeg.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe")) : "ffprobe";
   const g = guide.slice().sort((a, b) => a.startMs - b.startMs);
   // guide times keep fractions of a millisecond; item times are written to whole
   // ms, so a show starting as the last one ends can look a hair inside it
@@ -891,6 +1025,7 @@ export async function applyOverlays(
     const filler = !!labels[item.id]?.fillerKind;
     jobs.push((async () => {
     const layers: GraphicsLayer[] = [];
+    const legacyZ: { z: number; layer: GraphicsLayer }[] = []; // legacy elements, stacked by z_index at the end
     let vars: OverlayVars | null = null;
     for (const ref of [...new Set(ids)]) {
       const o = find(ref);
@@ -900,7 +1035,34 @@ export async function applyOverlays(
         if (!path || !o.timing.media?.path || mediaKey(path) !== mediaKey(o.timing.media.path)) continue;
       } else if (filler && !o.duringFiller) continue;
       if (!inSeason(o.season, s, tz)) continue;
+      // a legacy graphics element: filled in for this item, as legacy did
+      if (o.legacy) {
+        const got = await legacyLayers(o.legacy, { path: path ?? "", startMs: s, stopMs: f, tz, info, guide: g, output: opts.output ?? { w: 1920, h: 1080 } },
+          { cacheDir: opts.cacheDir, ffprobe, problems: out.problems });
+        if (got.length) {
+          legacyZ.push(...got);
+          const first = got[0].layer.timing;
+          note(item.id, o.id, first ? (first.clock === "content" ? first.phase_offset_ms ?? 0 : 0) : 0);
+        }
+        continue;
+      }
       const progSpan = cur ? (span.get(cur) ?? cur) : undefined;
+      // drawn live: a PNG per run of layers that share a time on screen, fetched from
+      // this scheduler as it airs; next fades each one itself (no pre-render)
+      if ((isAnimated(o.layers) || isTimed(o)) && drawsLive(o) && opts.liveBase) {
+        const t = overlayTiming(o, s, f, progSpan);
+        if (!t) continue;
+        if (t.timing) {
+          vars ??= overlayVars(cur, next, tz, { name: opts.channelName, number: opts.channelNumber });
+          const live = liveLayers(o, vars, t.timing, opts);
+          if (live.length) {
+            layers.push(...live);
+            note(item.id, o.id, t.timing.clock === "content" ? t.timing.phase_offset_ms ?? 0
+              : (((t.timing.phase_offset_ms ?? 0) - s) % t.timing.frequency_ms + t.timing.frequency_ms) % t.timing.frequency_ms);
+          }
+          continue;
+        }
+      }
       // animated: the transition clip (canvas) + the held still between transitions
       if ((isAnimated(o.layers) || isTimed(o)) && !o.anchor && opts.ffmpeg && opts.output) {
         const plan = animPlan(o, s, f, progSpan);
@@ -944,6 +1106,8 @@ export async function applyOverlays(
         layers.push({ source: { source_type: "local", path: p }, ...placement(l), ...common } as GraphicsLayer);
       }
     }
+    // next draws later layers on top: legacy elements by z_index, lowest first
+    if (legacyZ.length) layers.push(...legacyZ.sort((a, b) => a.z - b.z).map((x) => x.layer));
     if (layers.length) { item.graphics = [...layers, ...(item.graphics ?? [])]; out.items++; }
     })());
   }

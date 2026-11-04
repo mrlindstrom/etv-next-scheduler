@@ -15,8 +15,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
+import { LegacyImport, LegacyDesigner } from "../LegacyElements.js";
 import { navigate } from "../nav.js";
-import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, layerStateAt, layerWindow, hasLayerTiming, fadeAt, animLengths, isAnimated, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
+import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, layerStateAt, layerWindow, hasLayerTiming, fadeAt, animLengths, isAnimated, drawsLive, onlyFades, asFades, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
 
 const HOLIDAYS: [string, string][] = [
   ["christmas", "Christmas"], ["christmas_eve", "Christmas Eve"], ["halloween", "Halloween"], ["thanksgiving", "Thanksgiving"],
@@ -124,6 +125,9 @@ export function Overlays() {
   const [editing, setEditing] = useState<Overlay | null>(null);
   const [error, setError] = useState("");
   const [picking, setPicking] = useState(false);
+  const [importing, setImporting] = useState(false);
+  // open an overlay by id (after an import), from a fresh list
+  const openId = async (id: string) => { const r = await api.overlays(); setList(r.overlays); const o = r.overlays.find((x) => x.id === id); if (o) setEditing(clone(o)); };
   const [examples, setExamples] = useState<Overlay[]>([]);
   const [exErr, setExErr] = useState("");
   useEffect(() => {
@@ -145,6 +149,8 @@ export function Overlays() {
   }, []);
   useEffect(() => { load(); }, [load]);
 
+  if (editing?.legacy) return <LegacyDesigner key={editing.id} initial={editing} channels={channels} usedBy={usedBy}
+    onClose={() => { setEditing(null); load(); }} onSaved={(o) => { setEditing(o); load(); }} onChannels={load} />;
   if (editing) return <Designer key={editing.id || "new"} initial={editing} fields={fields} slots={slots} channels={channels} usedBy={usedBy}
     onClose={() => { setEditing(null); load(); }} onSaved={(o) => { setEditing(o); load(); }} onChannels={load} />;
 
@@ -155,9 +161,13 @@ export function Overlays() {
           <h1>Overlays</h1>
           <p className="muted">Graphics drawn over your channels: watermarks and bugs, lower thirds, "up next" straps. Each one can show your show's details — its name, episode, times, and what's on next — and appear always, every few minutes, or at a set point in each show.</p>
         </div>
-        <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
+        <div className="row" style={{ gap: 6 }}>
+          <button onClick={() => setImporting((v) => !v)} title="Bring in ErsatzTV legacy graphics elements (image / text / motion YAML files)">Import from legacy…</button>
+          <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
+        </div>
       </div>
       {error && <p className="err">{error}</p>}
+      {importing && <LegacyImport onClose={() => { setImporting(false); load(); }} onOpen={(id) => { setImporting(false); void openId(id); }} />}
       {showGallery && (
         <div className="meta-card ov-presets">
           <div className="pane-head"><b>{list?.length ? "Start from…" : "No overlays yet — start from one of these"}</b>{picking && !!list?.length && <button className="ghost" onClick={() => setPicking(false)}>Cancel</button>}</div>
@@ -189,10 +199,12 @@ export function Overlays() {
         <div className="ov-cards">
           {list.map((o) => (
             <button key={o.id} className="ov-card" onClick={() => setEditing(clone(o))}>
-              <Thumb o={o} vars={Object.fromEntries(fields.map((f) => [f.key, f.sample]))} />
+              {o.legacy
+                ? <div className="ov-thumb ov-legacy-thumb"><span>Legacy {o.legacy.kind} element</span><code>{o.legacy.file}</code></div>
+                : <Thumb o={o} vars={Object.fromEntries(fields.map((f) => [f.key, f.sample]))} />}
               <div className="ov-card-body">
                 <b>{o.name}</b>
-                <span className="muted">{timingText(o)}</span>
+                <span className="muted">{o.legacy ? "Filled in for each item, as in legacy" : timingText(o)}</span>
                 <span className="muted">{usedBy[o.id]?.length ? `On ${usedBy[o.id].length} channel${usedBy[o.id].length === 1 ? "" : "s"}` : "Not on any channel yet"}</span>
               </div>
             </button>
@@ -247,9 +259,13 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
   const timedMode = (ov.timing?.mode ?? "always") !== "always";
   const showMs = Math.max(1, Number(ov.timing?.showSeconds ?? 10) || 10) * 1000;
   const timed = timedMode && hasLayerTiming(ov.layers);
+  // drawn live: the preview shows it as it airs — every animation a fade
+  const live = drawsLive(ov) && (isAnimated(ov.layers) || timed);
+  const motionLayers = useMemo(() => (live ? asFades(ov.layers, ov.fadeSeconds) : ov.layers), [live, ov.layers, ov.fadeSeconds]);
+  const M = (l: Layer): Layer => (live ? motionLayers[ov.layers.indexOf(l)] ?? l : l);
   useEffect(() => {
     if (!playing) { setFrame(null); return; }
-    const { inMs, outMs } = animLengths(ov.layers);
+    const { inMs, outMs } = animLengths(motionLayers);
     if (timed) {
       const t0 = performance.now(), cycle = showMs + 900;
       let raf = 0;
@@ -267,10 +283,10 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, ov.layers, timed, showMs]);
+  }, [playing, motionLayers, timed, showMs]);
   const tlState = (l: Layer, tt: number): LayerState => {
-    const s = layerStateAt(l, tt, showMs, animLengths(ov.layers).outMs);
-    const env = isAnimated(ov.layers) ? 1 : fadeAt(tt, showMs, ov.fadeSeconds);
+    const s = layerStateAt(M(l), tt, showMs, animLengths(motionLayers).outMs);
+    const env = isAnimated(motionLayers) ? 1 : fadeAt(tt, showMs, ov.fadeSeconds);
     return env < 1 ? { ...s, opacity: s.opacity * env } : s;
   };
   // "when a video plays", with that video as the reference: where the slider is in
@@ -283,7 +299,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
   };
   const stateOf = (l: Layer): LayerState => {
     if (frame === "hidden") return HIDDEN;
-    if (frame) return frame.phase === "tl" ? tlState(l, frame.t) : layerState(l, frame.phase, frame.t);
+    if (frame) return frame.phase === "tl" ? tlState(l, frame.t) : layerState(M(l), frame.phase, frame.t);
     const lm = linkedMs();
     return lm != null ? tlState(l, lm) : FULL;
   };
@@ -724,7 +740,24 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                   </button>
                 ))}
               </div>
-              {isAnimated(ov.layers) && <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Animated overlays need ErsatzTV next 0.2.3 or newer. The held part between the animations is a still picture, so viewers who tune in mid-way still see it.</p>}
+              {(isAnimated(ov.layers) || timed) && t.mode !== "always" && (
+                <div className="ov-motion">
+                  <label>Motion
+                    <select value={ov.motion ?? "auto"} onChange={(e) => setOpt({ motion: e.target.value === "auto" ? undefined : e.target.value as "live" | "rendered" })}>
+                      <option value="auto">Automatic</option>
+                      <option value="live">Fades only — drawn live</option>
+                      <option value="rendered">Full animation — pre-rendered</option>
+                    </select>
+                  </label>
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+                    {!ov.motion && (onlyFades(ov.layers) ? "Automatic: it only fades, so it's drawn live. " : "Automatic: it uses wipes, slides or other moves, so it's pre-rendered. ")}
+                    {live
+                      ? <>Drawn live by the scheduler as it airs: each layer fades in and out at its own time{onlyFades(ov.layers) ? "" : " (other animations play as fades — the preview shows how)"}. Nothing is pre-rendered, so builds are instant and use no disk space. The scheduler must be running while channels play, like the up-next cards.</>
+                      : <>Pre-rendered as a short transparent video for each different look (each show, or each airing if it shows times): every animation plays exactly as designed, and it plays even if the scheduler is off. Builds take longer and the videos use disk space (cleared when unused for two weeks). Needs ErsatzTV next 0.2.3 or newer.</>}
+                  </p>
+                </div>
+              )}
+              {isAnimated(ov.layers) && t.mode === "always" && <p className="muted" style={{ fontSize: 12, margin: "8px 0 0" }}>Animated always-on overlays are pre-rendered and need ErsatzTV next 0.2.3 or newer. The held part between the animations is a still picture, so viewers who tune in mid-way still see it.</p>}
             </div>
 
             <div className="meta-card">

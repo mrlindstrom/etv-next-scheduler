@@ -435,7 +435,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         if (!o) throw new Error("That overlay isn't in the library any more.");
         const lead = Math.max(0, Number(req.lead ?? 4));
         const show = o.timing?.mode === "always" || !o.timing?.mode ? 10 : Math.max(1, Number(o.timing.showSeconds ?? 10));
-        const preview = { ...clone(o), id: "__preview", season: undefined, timing: { mode: "start" as const, offsetSeconds: startSec + lead, showSeconds: show } };
+        const preview = { ...clone(o), id: "__preview", liveId: o.id, season: undefined, timing: { mode: "start" as const, offsetSeconds: startSec + lead, showSeconds: show } };
         const s0 = Date.parse(src.start), s1 = Date.parse(src.finish);
         const rows = await upcoming(xmltvFor(String(req.channel)), tz, s0 - 12 * 3_600_000, 600);
         const ci = rows.reduce((k, r, i) => (r.epochMs <= s0 + 1000 ? i : k), -1);

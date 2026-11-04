@@ -1041,6 +1041,40 @@ export class SqliteResolver implements ContentResolver {
   /** Audio/subtitle streams for a local file path, for language-based track
    *  selection. Keyed by path (case-insensitive) since a path may exist in more
    *  than one library — the probed stream layout is identical, so any row works. */
+  /** What ErsatzTV legacy put in a graphics element's MediaItem_* variables, for a
+   *  file: its metadata, show, genres / studios / directors, size and length. */
+  templateData(path: string): import("./legacy-graphics.js").LegacyItemData | null {
+    const q1 = (sql: string, ...a: (string | number)[]): any => { try { return this.db.prepare(sql).get(...a); } catch { return undefined; } };
+    const qa = (sql: string, ...a: (string | number)[]): any[] => { try { return this.db.prepare(sql).all(...a) as any[]; } catch { return []; } };
+    const mv = q1(`SELECT mv.Id, mv.EpisodeId, mv.MovieId, mv.OtherVideoId, mv.MusicVideoId, mv.Width, mv.Height, mv.Duration FROM MediaFile mf JOIN MediaVersion mv ON mv.Id = mf.MediaVersionId WHERE mf.Path = ? LIMIT 1`, path);
+    if (!mv) return null;
+    const names = (table: string, col: string, id: number) => qa(`SELECT Name FROM ${table} WHERE ${col} = ? ORDER BY Name`, id).map((r) => String(r.Name ?? "")).filter(Boolean);
+    const ms = (v: unknown) => { if (v == null || v === "") return null; const t = Date.parse(String(v)); return Number.isFinite(t) ? t : null; };
+    const durMs = (() => { const s = String(mv.Duration ?? ""); const m = /^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(s); return m ? ((+(m[1] ?? 0) * 24 + +m[2]) * 60 + +m[3]) * 60_000 + +m[4] * 1000 : Number(s) || 0; })();
+    const out: import("./legacy-graphics.js").LegacyItemData = { width: mv.Width ?? 0, height: mv.Height ?? 0, durationMs: durMs };
+    const fill = (md: any, kind: string) => {
+      if (!md) return;
+      Object.assign(out, { title: md.Title ?? "", plot: md.Plot ?? "", releaseDateMs: ms(md.ReleaseDate), year: md.Year ?? null, contentRating: md.ContentRating ?? "",
+        genres: names("Genre", `${kind}MetadataId`, md.Id), studios: names("Studio", `${kind}MetadataId`, md.Id) });
+      if (kind !== "Show") out.directors = names("Director", `${kind}MetadataId`, md.Id);
+    };
+    if (mv.EpisodeId) {
+      fill(q1(`SELECT * FROM EpisodeMetadata WHERE EpisodeId = ? LIMIT 1`, mv.EpisodeId), "Episode");
+      const sh = q1(`SELECT sm.* FROM Episode e JOIN Season se ON se.Id = e.SeasonId JOIN ShowMetadata sm ON sm.ShowId = se.ShowId WHERE e.Id = ? LIMIT 1`, mv.EpisodeId);
+      if (sh) Object.assign(out, { showTitle: sh.Title ?? "", showYear: sh.Year ?? null, showContentRating: sh.ContentRating ?? "", showGenres: names("Genre", "ShowMetadataId", sh.Id) });
+    } else if (mv.MovieId) fill(q1(`SELECT * FROM MovieMetadata WHERE MovieId = ? LIMIT 1`, mv.MovieId), "Movie");
+    else if (mv.OtherVideoId) fill(q1(`SELECT * FROM OtherVideoMetadata WHERE OtherVideoId = ? LIMIT 1`, mv.OtherVideoId), "OtherVideo");
+    else if (mv.MusicVideoId) {
+      const md = q1(`SELECT * FROM MusicVideoMetadata WHERE MusicVideoId = ? LIMIT 1`, mv.MusicVideoId);
+      fill(md, "MusicVideo");
+      if (md) {
+        const artist = q1(`SELECT am.Title FROM MusicVideo m JOIN ArtistMetadata am ON am.ArtistId = m.ArtistId WHERE m.Id = ? LIMIT 1`, mv.MusicVideoId);
+        Object.assign(out, { album: md.Album ?? "", track: md.Track ?? null, artist: artist?.Title ?? "", artists: names("MusicVideoArtist", "MusicVideoMetadataId", md.Id) });
+      }
+    }
+    return out;
+  }
+
   streamsForPath(path: string): MediaStreamInfo[] | undefined {
     if (!path) return undefined;
     if (!this.pathStreamIndex) this.buildPathStreamIndex();

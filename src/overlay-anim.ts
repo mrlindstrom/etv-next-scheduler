@@ -128,6 +128,33 @@ export function layerStateAt(l: Geo, tMs: number, showMs: number, groupOutMs: nu
   return tMs < outStart ? layerState(l, "in", tMs - w.start) : layerState(l, "out", tMs - outStart);
 }
 
+// ---- "Fades only — drawn live" -------------------------------------------------------
+// next's graphics engine can fade a layer in and out by itself, so an overlay whose
+// layers only fade can be drawn live (a PNG per layer, fetched as it airs) instead of
+// pre-rendered as video. Other animations play as fades when it's set to live.
+type MotionOverlay = { motion?: "live" | "rendered"; timing?: { mode?: string }; anchor?: unknown; layers: Geo[] };
+/** Whether every layer only fades (or doesn't animate at all). */
+export const onlyFades = (layers: Geo[]) => layers.every((l) => [l.anim?.in, l.anim?.out].every((s) => !s || s.type === "none" || s.type === "fade"));
+/** Whether builds draw this overlay live: set to, or (automatic) it only fades.
+ *  Never for "always on" overlays or imported watermarks (those are stills). */
+export function drawsLive(o: MotionOverlay): boolean {
+  if ((o.timing?.mode ?? "always") === "always" || o.anchor) return false;
+  if (o.motion === "rendered") return false;
+  return o.motion === "live" || onlyFades(o.layers);
+}
+/** A layer's live fade (ms): its "comes on" length, else the overlay's fade setting. */
+export function liveFadeMs(l: Geo, fadeSeconds: number | undefined): number {
+  const s = l.anim?.in && l.anim.in.type !== "none" ? l.anim.in : null;
+  return Math.max(20, (s ? s.duration ?? 0.5 : fadeSeconds ?? 1) * 1000);
+}
+/** The layers as they look drawn live: every animation a fade (for previews). */
+export function asFades<T extends Geo>(layers: T[], fadeSeconds: number | undefined): T[] {
+  return layers.map((l) => {
+    const d = liveFadeMs(l, fadeSeconds) / 1000;
+    return { ...l, anim: { in: { type: "fade" as const, duration: d, delay: l.anim?.in?.delay ?? 0 }, out: { type: "fade" as const, duration: d } } };
+  });
+}
+
 /** How much of an un-animated overlay shows `tMs` into an appearance, with its
  *  fade setting (seconds) at each end — as next fades a plain still. */
 export function fadeAt(tMs: number, showMs: number, fadeSeconds: number | undefined): number {

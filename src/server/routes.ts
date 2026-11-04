@@ -15,6 +15,7 @@ import { spawn } from "node:child_process";
 import { buildService, type BuildWorkerChannel } from "./build-service.js";
 import { ConfigStore } from "./config.js";
 import { getResolver, dropResolver } from "./resolverCache.js";
+import { registerLegacyElementRoutes } from "./legacy-elements.js";
 import { createJob, getJob } from "./jobs.js";
 import type { Scheduler } from "./scheduler.js";
 import { generateNext, seedNextConfig, playoutBaseDir, upNextOptionsFor, writeGuidePlayout, cardAudioPath } from "./nextgen.js";
@@ -851,7 +852,38 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   // --- overlays (timed graphics over programmes; see src/overlays.ts) ---------
   app.addContentTypeParser(/^video\//, { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
   if (!app.hasContentTypeParser("application/octet-stream")) app.addContentTypeParser("application/octet-stream", { parseAs: "buffer", bodyLimit: MAX_VIDEO_BYTES + 1024 }, (_req, body, done) => done(null, body));
-  try { pruneOverlayCache(overlayCacheDir(store, ROOT)); } catch { /* ignore */ }
+  // drop cached stills / clips nothing has used for two weeks: at startup and daily
+  const pruneCache = () => { try { const n = pruneOverlayCache(overlayCacheDir(store, ROOT)); if (n) appLog("server", `overlay cache: removed ${n} file${n === 1 ? "" : "s"} nothing has used for 14 days`); } catch { /* ignore */ } };
+  pruneCache();
+  setInterval(pruneCache, 86_400_000).unref();
+  // overlays drawn live: next fetches each layer's PNG as it airs (see liveLayers
+  // in overlays.ts). The show details come in the address, baked in by the build.
+  const livePngs = new Map<string, Buffer>();
+  app.get("/graphics/overlay.png", async (req, reply) => {
+    const q = req.query as Record<string, string>;
+    const key = req.url;
+    let png = livePngs.get(key);
+    if (!png) {
+      const o = store.getOverlay(String(q.o ?? "")) as Overlay | null;
+      const W = Math.max(16, Math.min(7680, Number(q.w) || 1920)), H = Math.max(16, Math.min(4320, Number(q.h) || 1080));
+      let vars: Record<string, string> = {};
+      try { vars = JSON.parse(Buffer.from(String(q.d ?? ""), "base64url").toString("utf8")) ?? {}; } catch { /* none */ }
+      const idx = String(q.l ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0);
+      const layers = o ? idx.map((i) => o.layers[i]).filter(Boolean) : [];
+      const oo = overlayOptionsFor(store, String(q.c ?? ""), ROOT); // asset folder, channel logo, pictures folder
+      await loadRasterizer();
+      const s = overlaySvg({ ...(o ?? { id: "", name: "", timing: { mode: "always" } }), layers } as Overlay, vars, (src) => {
+        try { const p = assetPath(src, oo.assetsDir, oo.channelLogo); if (!p) return null; return { data: readFileSync(p).toString("base64"), mime: logoContentType(p) }; } catch { return null; }
+      }, { view: { x: 0, y: 0, w: 1920, h: 1080 }, px: { w: W, h: H } });
+      png = (s && (await rasterize(s.svg))) || (await rasterize(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"/>`)) || Buffer.alloc(0);
+      if (livePngs.size > 400) livePngs.delete(livePngs.keys().next().value!);
+      livePngs.set(key, png);
+    }
+    reply.header("content-type", "image/png").header("cache-control", "public, max-age=600");
+    return reply.send(png);
+  });
+  // a changed overlay draws afresh live (its addresses stay the same)
+  app.addHook("onResponse", async (req) => { if (req.url.startsWith("/api/overlays") && req.method !== "GET") livePngs.clear(); });
   const examplesDir = overlayExamplesDir(ROOT); // also where example: image sources resolve
   // ready-made overlays that ship with the scheduler (examples/overlays/*.json)
   app.get("/api/overlays/examples", async () => {
@@ -943,6 +975,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const q = req.query as { name?: string; kind?: string };
     return sendPicture(reply, findPicture(String(q.name ?? ""), q.kind === "video" ? "video" : "image", picturesDir()) || null);
   });
+  // ErsatzTV legacy graphics elements: import (paste / upload / folder) and test
+  registerLegacyElementRoutes(app, store, ROOT, libDb);
   // one frame of a library file, for the designer's reference picture (any format
   // ffmpeg reads, unlike the browser); only files that are in the library
   app.get("/api/overlays/reference-frame", async (req, reply) => {

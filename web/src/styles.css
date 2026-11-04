@@ -509,6 +509,16 @@ th[aria-sort=ascending], th[aria-sort=descending] { color: var(--accent-hi); }
 .ov-card-body { display: flex; flex-direction: column; gap: 1px; padding: 10px 12px 12px; }
 .ov-card-body span { font-size: 12px; font-weight: 400; }
 .ov-thumb { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; background: linear-gradient(135deg, #1e293b, #0f172a 60%, #312e81); }
+/* ErsatzTV legacy graphics elements */
+.ov-legacy-thumb { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: #e2e8f0; font-size: 13px; font-weight: 600; text-align: center; padding: 8px; }
+.ov-legacy-thumb code { font-size: 11px; font-weight: 400; opacity: .75; word-break: break-all; }
+.ov-legacy-import { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.ov-legacy-result { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line2); font-size: 13px; }
+.ov-yaml { width: 100%; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; line-height: 1.45; white-space: pre; tab-size: 2; }
+.ov-legacy-layout { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.ov-legacy-layout > div > .meta-card + .meta-card { margin-top: 14px; }
+.ov-legacy-test { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+@media (max-width: 900px) { .ov-legacy-import, .ov-legacy-layout { grid-template-columns: 1fr; } }
 .ov-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
 .ov-name { max-width: 360px; font-size: 16px; font-weight: 600; }
 .ov-top-actions { margin-left: auto; display: flex; gap: 6px; }
@@ -521,6 +531,9 @@ th[aria-sort=ascending], th[aria-sort=descending] { color: var(--accent-hi); }
 .ov-align { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .ov-align-label { color: var(--muted, #94a3b8); min-width: 40px; }
 .ov-align .ov-seg { flex-wrap: nowrap; }
+/* overlay designer: the Motion setting (drawn live vs pre-rendered) */
+.ov-motion { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line2); }
+.ov-motion select { width: auto; margin-left: 8px; }
 /* overlay designer: "when a video plays" — the video and the library search */
 .ov-media { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 .ov-media-list { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
