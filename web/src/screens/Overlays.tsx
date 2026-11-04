@@ -13,7 +13,7 @@
 //     on channels right here
 // Builds render each overlay per programme (see src/overlays.ts).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, overlayAssetSrc, CHANNEL_LOGO, MATCH_PREFIX, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
+import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { navigate } from "../nav.js";
 import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, layerStateAt, layerWindow, hasLayerTiming, fadeAt, animLengths, isAnimated, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
@@ -36,7 +36,8 @@ const HANDLES: Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 const uid = () => Math.random().toString(36).slice(2, 9);
 // The designer's reference picture / video, kept while this tab is open so it
 // stays put across overlays. A local file shown from the browser's memory.
-type RefBg = { url: string; name: string; video: boolean; t: number; dim: number };
+// `lib`: a library file, shown a frame at a time by the server (any format).
+type RefBg = { url: string; name: string; video: boolean; t: number; dim: number; lib?: { path: string; durationMs: number } };
 let lastRef: RefBg | null = null;
 const clock = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, "0")}`;
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -84,6 +85,7 @@ function timingText(o: Overlay): string {
   if (t.mode === "every") return `${t.showSeconds ?? 10}s every ${t.everyMinutes ?? 15} min`;
   if (t.mode === "start") return `${t.showSeconds ?? 10}s, ${t.offsetSeconds ?? 0}s into each show`;
   if (t.mode === "end") return `${t.showSeconds ?? 10}s, ${t.offsetSeconds ?? 0}s before each show ends`;
+  if (t.mode === "media") return t.media ? `Over “${t.media.title || t.media.path.split(/[\\/]/).pop()}”, whenever it airs` : "When a video plays (none picked yet)";
   return "Always on";
 }
 
@@ -263,13 +265,24 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [playing, ov.layers, timed, showMs]);
+  const tlState = (l: Layer, tt: number): LayerState => {
+    const s = layerStateAt(l, tt, showMs, animLengths(ov.layers).outMs);
+    const env = isAnimated(ov.layers) ? 1 : fadeAt(tt, showMs, ov.fadeSeconds);
+    return env < 1 ? { ...s, opacity: s.opacity * env } : s;
+  };
+  // "when a video plays", with that video as the reference: where the slider is in
+  // the overlay's appearance (ms), so scrubbing shows which layers are up
+  const linkedMs = (): number | null => {
+    const tm = ov.timing;
+    if (tm?.mode !== "media" || !tm.media || !ref?.lib || ref.lib.path !== tm.media.path) return null;
+    const tt = (ref.t - (tm.offsetSeconds ?? 0)) * 1000;
+    return tt >= 0 && tt < showMs ? tt : null;
+  };
   const stateOf = (l: Layer): LayerState => {
     if (frame === "hidden") return HIDDEN;
-    if (!frame) return FULL;
-    if (frame.phase !== "tl") return layerState(l, frame.phase, frame.t);
-    const s = layerStateAt(l, frame.t, showMs, animLengths(ov.layers).outMs);
-    const env = isAnimated(ov.layers) ? 1 : fadeAt(frame.t, showMs, ov.fadeSeconds);
-    return env < 1 ? { ...s, opacity: s.opacity * env } : s;
+    if (frame) return frame.phase === "tl" ? tlState(l, frame.t) : layerState(l, frame.phase, frame.t);
+    const lm = linkedMs();
+    return lm != null ? tlState(l, lm) : FULL;
   };
   const history = useRef<string[]>([]);
   const future = useRef<string[]>([]);
@@ -293,7 +306,22 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
   };
   // the frame slider moves the (paused) video
   useEffect(() => { const v = refVideo.current; if (v && ref?.video && Math.abs(v.currentTime - ref.t) > 0.005) v.currentTime = ref.t; }, [ref?.t, ref?.url]);
-  const seekRef = (t: number) => ref && setRef({ ...ref, t: Math.max(0, Math.min(refDur || t, t)) });
+  const refDurS = ref?.lib ? ref.lib.durationMs / 1000 : refDur;
+  const seekRef = (t: number) => ref && setRef({ ...ref, t: Math.max(0, Math.min(refDurS || t, t)) });
+  // a library reference asks the server for a frame once the slider settles
+  const [libT, setLibT] = useState(lastRef?.t ?? 0);
+  useEffect(() => { if (!ref?.lib) return; const h = setTimeout(() => setLibT(ref.t), 150); return () => clearTimeout(h); }, [ref?.t, ref?.lib?.path]);
+  const loadMediaRef = (m: OverlayMedia, at = 0) => {
+    if (lastRef?.url) URL.revokeObjectURL(lastRef.url);
+    setRefErr(""); setRefDur(0); setLibT(at);
+    setRef({ url: "", name: m.title || m.path.split(/[\\/]/).pop() || "video", video: false, t: at, dim: lastRef?.dim ?? 0, lib: { path: m.path, durationMs: m.durationMs ?? 0 } });
+  };
+  // opening a "when a video plays" overlay brings its video up as the reference
+  useEffect(() => {
+    const m = initial.timing?.mode === "media" ? initial.timing.media : undefined;
+    if (m && lastRef?.lib?.path !== m.path) loadMediaRef(m, initial.timing.offsetSeconds ?? 0);
+  }, []);
+  const [pickMedia, setPickMedia] = useState(false);
 
   // stage scale follows its width
   useEffect(() => {
@@ -549,19 +577,19 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
           {ref && (
             <div className="ov-refbar">
               <span className="muted" title={ref.name}>Reference: <b>{ref.name.length > 32 ? `${ref.name.slice(0, 30)}…` : ref.name}</b> — only for lining things up; not saved or shown on air</span>
-              {ref.video && refDur > 0 && (
+              {(ref.video || ref.lib) && refDurS > 0 && (
                 <span className="ov-refscrub">
                   <button className="ghost" onClick={() => seekRef(ref.t - 10)} title="Back 10 seconds">«</button>
                   <button className="ghost" onClick={() => seekRef(ref.t - 1 / 30)} title="Back one frame">‹</button>
-                  <input type="range" min={0} max={refDur} step={1 / 30} value={ref.t} onChange={(e) => seekRef(Number(e.target.value))} aria-label="Frame" />
+                  <input type="range" min={0} max={refDurS} step={1 / 30} value={ref.t} onChange={(e) => seekRef(Number(e.target.value))} aria-label="Frame" />
                   <button className="ghost" onClick={() => seekRef(ref.t + 1 / 30)} title="Forward one frame">›</button>
                   <button className="ghost" onClick={() => seekRef(ref.t + 10)} title="Forward 10 seconds">»</button>
-                  <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{clock(ref.t)} / {clock(refDur)}</span>
+                  <span className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{clock(ref.t)} / {clock(refDurS)}</span>
                 </span>
               )}
               {ref.video && !refDur && !refErr && <span className="muted">Loading the video…</span>}
               <label className="ov-inline" title="Darken the reference so the layers stand out">Dim <input type="range" min={0} max={80} value={ref.dim} onChange={(e) => setRef({ ...ref, dim: Number(e.target.value) })} style={{ width: 80 }} /></label>
-              <button className="ghost" onClick={() => { URL.revokeObjectURL(ref.url); setRef(null); setRefErr(""); }}>Remove</button>
+              <button className="ghost" onClick={() => { if (ref.url) URL.revokeObjectURL(ref.url); setRef(null); setRefErr(""); }}>Remove</button>
               {refErr && <span className="err">{refErr}</span>}
             </div>
           )}
@@ -575,7 +603,9 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
               addFile(f, { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale });
             }}>
             {/* shown fitted on black, the way next fits a show into the frame */}
-            {ref && (ref.video
+            {ref?.lib && <img className="ov-ref" src={referenceFrameUrl(ref.lib.path, libT)} alt="" onLoad={() => setRefErr("")}
+              onError={() => setRefErr("The server couldn't read a frame from that file (is it reachable from this computer?).")} />}
+            {ref && !ref.lib && (ref.video
               ? <video key={ref.url} ref={refVideo} className="ov-ref" src={ref.url} muted playsInline preload="auto"
                   onLoadedMetadata={(e) => {
                     const d = e.currentTarget.duration;
@@ -614,7 +644,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
             )}
           </div>
           {timedMode && ov.layers.length > 0 && (
-            <Timeline layers={ov.layers} showMs={showMs} t={frame && frame !== "hidden" && frame.phase === "tl" ? frame.t : null} sel={sel} onSelect={setSel} />
+            <Timeline layers={ov.layers} showMs={showMs} t={frame && frame !== "hidden" && frame.phase === "tl" ? frame.t : linkedMs()} sel={sel} onSelect={setSel} />
           )}
           <p className="muted ov-hint">Drag to move, drag the corners to resize (Shift stretches images), arrow keys nudge (Shift = 10px). Hold Alt to stop snapping. The dashed line is the safe area most TVs show.</p>
 
@@ -627,6 +657,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                   ["every", "Every few minutes", "Pops up on a regular schedule"],
                   ["start", "After a show starts", "Once, a set time into each show"],
                   ["end", "Before a show ends", "Once, near the end (great for \"up next\")"],
+                  ["media", "When a video plays", "Over one particular video, whenever it airs (e.g. a pre-made up-next bumper)"],
                 ] as const).map(([mode, label, desc]) => (
                   <button key={mode} className={`ov-when-opt${t.mode === mode ? " active" : ""}`} onClick={() => setTiming({ mode })}>
                     <b>{label}</b><span>{desc}</span>
@@ -639,6 +670,21 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
               {t.mode === "start" && (
                 <div className="ov-sentence">Show for <input type="number" min={1} value={t.showSeconds ?? 10} onChange={(e) => setTiming({ showSeconds: Number(e.target.value) })} /> seconds, <input type="number" min={0} value={t.offsetSeconds ?? 60} onChange={(e) => setTiming({ offsetSeconds: Number(e.target.value) })} /> seconds after each show starts.</div>
               )}
+              {t.mode === "media" && (t.media && !pickMedia ? (
+                <div className="ov-media">
+                  <div className="ov-sentence">Over <b>{t.media.title || t.media.path.split(/[\\/]/).pop()}</b>{t.media.durationMs ? ` (${clock(t.media.durationMs / 1000).replace(/\.\d+$/, "")})` : ""}
+                    {" "}<button className="ghost" onClick={() => setPickMedia(true)}>Change…</button>
+                    {!(ref?.lib && ref.lib.path === t.media.path) && <button className="ghost" onClick={() => loadMediaRef(t.media!, t.offsetSeconds ?? 0)}>Show it behind the canvas</button>}
+                  </div>
+                  <div className="ov-sentence">Show for <input type="number" min={1} value={t.showSeconds ?? 10} onChange={(e) => setTiming({ showSeconds: Number(e.target.value) })} /> seconds, starting <input type="number" min={0} value={t.offsetSeconds ?? 0} onChange={(e) => setTiming({ offsetSeconds: Number(e.target.value) })} /> seconds into it.</div>
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>On every channel, each time it airs — as a commercial or bumper too — so there's no need to tick channels. Show details mean what's around it in the guide: <code>{"{{next_show}}"}</code> is the next show after it. Drag the frame slider above the canvas to see which layers are up at each moment, and give layers their own time under <b>On screen</b>. Rebuild the channels that play it.</p>
+                </div>
+              ) : (
+                <MediaPicker onCancel={t.media ? () => setPickMedia(false) : undefined} onPick={(m) => {
+                  setTiming({ media: m, offsetSeconds: 0, showSeconds: Math.max(1, Math.round((m.durationMs ?? 10000) / 1000)) });
+                  loadMediaRef(m); setPickMedia(false);
+                }} />
+              ))}
               {t.mode === "end" && (
                 <div className="ov-sentence">Show for <input type="number" min={1} value={t.showSeconds ?? 10} onChange={(e) => setTiming({ showSeconds: Number(e.target.value) })} /> seconds, starting <input type="number" min={0} value={t.offsetSeconds ?? 120} onChange={(e) => setTiming({ offsetSeconds: Number(e.target.value) })} /> seconds before each show ends.</div>
               )}
@@ -661,7 +707,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                   <div className="ov-sentence">From <input style={{ width: 90 }} value={ov.season.from} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, from: e.target.value } })} /> to <input style={{ width: 90 }} value={ov.season.to ?? ""} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, to: e.target.value } })} /> (month-day, e.g. 12-01).</div>
                 )}
               </div>
-              <label className="ov-inline"><input type="checkbox" checked={!!ov.duringFiller} onChange={(e) => setOpt({ duringFiller: e.target.checked })} /> Also show over commercials and bumpers</label>
+              {t.mode !== "media" && <label className="ov-inline"><input type="checkbox" checked={!!ov.duringFiller} onChange={(e) => setOpt({ duringFiller: e.target.checked })} /> Also show over commercials and bumpers</label>}
               <label className="ov-inline"><input type="checkbox" checked={!!ov.withinContent} onChange={(e) => setOpt({ withinContent: e.target.checked })} /> Keep it inside the picture on letterboxed / 4:3 shows</label>
             </div>
 
@@ -680,7 +726,15 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
 
             <div className="meta-card">
               <b>Show on channels</b>
-              {!ov.id ? <p className="muted">Save the overlay first, then pick its channels here.</p> : (
+              {t.mode === "media" ? (
+                <>
+                  <p className="muted" style={{ margin: "4px 0 8px" }}>Shown on every channel, wherever {t.media ? <b>{t.media.title || "its video"}</b> : "the video you pick"} airs. Save it, then rebuild the channels that play that video.</p>
+                  {ov.id && <div className="row" style={{ gap: 6 }}>
+                    <button onClick={() => navigate("build")}>Go to Build →</button>
+                    <button onClick={() => navigate("troubleshoot", { tab: "overlays", overlay: ov.id })} title="Play the moment it appears on a channel, through ErsatzTV next">Test on a channel →</button>
+                  </div>}
+                </>
+              ) : !ov.id ? <p className="muted">Save the overlay first, then pick its channels here.</p> : (
                 <>
                   <p className="muted" style={{ margin: "4px 0 8px" }}>Shown over every programme on these channels. To use it on just one block or grid show, pick it in that block's settings. Rebuild a channel after changing this.</p>
                   <div className="ov-chans">
@@ -860,6 +914,50 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
           <button onClick={() => set({ y: Math.round((AH - l.h) / 2) })}>Centre down</button>
         </div>
       </details>
+    </div>
+  );
+}
+
+/** Find the video in the library that sets off a "when a video plays" overlay. */
+function MediaPicker({ onPick, onCancel }: { onPick: (m: OverlayMedia) => void; onCancel?: () => void }) {
+  const [q, setQ] = useState("");
+  const [res, setRes] = useState<{ items: SearchItem[]; total: number; error?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    if (!q.trim()) { setRes(null); return; }
+    const h = setTimeout(() => { api.browseSearch(q.trim(), 0, 25).then((r) => setRes({ items: r.items ?? [], total: r.total ?? 0, error: r.error })).catch((e) => setRes({ items: [], total: 0, error: String(e.message ?? e) })); }, 300);
+    return () => clearTimeout(h);
+  }, [q]);
+  const pick = async (it: SearchItem) => {
+    setBusy(true); setErr("");
+    try {
+      const d = await api.browseDetail(it.type, it.id);
+      if (!d?.path) throw new Error("The library doesn't have a file for that item.");
+      onPick({ path: d.path, title: it.showTitle && it.showTitle !== it.title ? `${it.showTitle} — ${it.title}` : it.title, durationMs: it.durationMs || d.durationMs });
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  };
+  return (
+    <div className="ov-media">
+      <div className="row" style={{ gap: 6, alignItems: "center" }}>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find the video in your library — type part of its name" style={{ flex: 1 }} />
+        {onCancel && <button className="ghost" onClick={onCancel}>Cancel</button>}
+      </div>
+      {res?.error && <p className="err" style={{ fontSize: 12 }}>{res.error}</p>}
+      {err && <p className="err" style={{ fontSize: 12 }}>{err}</p>}
+      {res && !res.error && !res.items.length && <p className="muted" style={{ fontSize: 12 }}>Nothing matches “{q}”.</p>}
+      {!!res?.items.length && (
+        <div className="ov-media-list">
+          {res.items.map((it) => (
+            <button key={`${it.type}-${it.id}`} className="ov-media-row" disabled={busy} onClick={() => pick(it)}>
+              <span>{it.showTitle && it.showTitle !== it.title ? <><b>{it.showTitle}</b> — {it.title}</> : <b>{it.title}</b>}{it.year ? ` (${it.year})` : ""}</span>
+              <span className="muted">{it.type.replace(/_/g, " ")} · {clock(it.durationMs / 1000).replace(/\.\d+$/, "")}</span>
+            </button>
+          ))}
+          {res.total > res.items.length && <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>{res.total} matches; type more to narrow it down.</p>}
+        </div>
+      )}
+      {!q && <p className="muted" style={{ fontSize: 12, margin: "4px 0 0" }}>Pick the video this overlay goes over. It comes up behind the canvas so you can line things up with it.</p>}
     </div>
   );
 }

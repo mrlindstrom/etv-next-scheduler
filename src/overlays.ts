@@ -46,8 +46,11 @@ export type OverlayLayer =
   | (Box & { type: "video"; src: string; fallback?: string });
 
 export interface OverlayTiming {
-  /** always on | every N minutes (wall clock) | N seconds after a programme starts | N seconds before it ends */
-  mode: "always" | "every" | "start" | "end";
+  /** always on | every N minutes (wall clock) | N seconds after a programme starts | N seconds before it ends
+   *  | whenever one particular file airs (`media`), N seconds into it */
+  mode: "always" | "every" | "start" | "end" | "media";
+  /** media: the file that sets it off (on every channel that plays it), and its length */
+  media?: { path: string; title?: string; durationMs?: number };
   everyMinutes?: number;
   /** how long it stays on screen (every / start / end) */
   showSeconds?: number;
@@ -448,6 +451,12 @@ export function overlayTiming(o: Overlay, startMs: number, endMs: number, prog: 
     if (showMs >= freq) return {};
     return { timing: { timing_type: "periodic", clock: "wall", frequency_ms: freq, hold_ms: hold, fade_ms: fade, phase_offset_ms: (Math.max(0, num(t.offsetSeconds, 0)) * 1000) % freq } };
   }
+  if (t.mode === "media") {
+    // the item is the file itself: N seconds into it (applyOverlays checks the file)
+    const off = Math.max(0, num(t.offsetSeconds, 0)) * 1000;
+    if (startMs + off >= endMs) return null;
+    return { timing: { timing_type: "periodic", clock: "content", frequency_ms: 86_400_000, hold_ms: hold, fade_ms: fade, phase_offset_ms: Math.round(off) } };
+  }
   if (!prog) return null;
   const off = Math.max(0, num(t.offsetSeconds, 0)) * 1000;
   const at = t.mode === "start" ? prog.startMs + off : prog.stopMs - off;
@@ -566,6 +575,11 @@ function animPlan(o: Overlay, startMs: number, endMs: number, prog: { startMs: n
     if (first >= endMs) return null;
     return { offset: first - startMs, hold: hold(first - startMs + inMs, len, freq) };
   }
+  if (t.mode === "media") {
+    const off = Math.max(0, num(t.offsetSeconds, 0)) * 1000;
+    if (startMs + off >= endMs) return null;
+    return { offset: off, hold: hold(off + inMs, len, DAY) };
+  }
   if (!prog) return null;
   const off = Math.max(0, num(t.offsetSeconds, 0)) * 1000;
   const at = t.mode === "start" ? prog.startMs + off : prog.stopMs - off;
@@ -582,6 +596,9 @@ function runFfmpeg(ffmpeg: string, args: string[]): Promise<string> {
     p.on("close", (code) => res(code === 0 ? "" : err.trim().split(/\r?\n/).slice(-2).join(" ") || `ffmpeg exited ${code}`));
   });
 }
+
+/** A file path compared the way the file system does (Windows: any case, either slash). */
+const mediaKey = (p: string) => (/^[A-Za-z]:|\\/.test(p) ? p.replace(/\\/g, "/").toLowerCase() : p);
 
 /** Frames that would draw the same picture share a key (rounded to 1/100). */
 const stateKey = (states: LayerState[]) => JSON.stringify(states.map((st) => [st.opacity, st.dx, st.dy, st.scale, st.clip, st.chars].map((n) => (typeof n === "number" ? Math.round(n * 100) / 100 : n))));
@@ -709,7 +726,14 @@ export async function applyOverlays(
   items: PlayoutItem[], refs: Map<string, string[]>, labels: Record<string, ItemLabel>, guide: GuideEntry[], tz: Tz, opts: OverlayBuildOptions,
 ): Promise<OverlayResult> {
   const out: OverlayResult = { items: 0, rendered: 0, problems: [] };
-  if (!refs.size) return out;
+  // overlays set off by one file: on every channel, wherever that file airs
+  const byMedia = new Map<string, string[]>();
+  for (const o of opts.library) {
+    if (o.timing?.mode !== "media" || !o.timing.media?.path) continue;
+    const k = mediaKey(o.timing.media.path);
+    byMedia.set(k, [...(byMedia.get(k) ?? []), o.id]);
+  }
+  if (!refs.size && !byMedia.size) return out;
   await resvg();
   const lib = new Map<string, Overlay>();
   for (const o of opts.library) { lib.set(o.id, o); if (!lib.has(o.name.toLowerCase())) lib.set(o.name.toLowerCase(), o); }
@@ -799,8 +823,9 @@ export async function applyOverlays(
   };
   let gi = 0;
   for (const item of items) {
-    const ids = refs.get(item.id);
-    if (!ids?.length) continue;
+    const path = (item.source as { path?: string } | undefined)?.path;
+    const ids = [...(refs.get(item.id) ?? []), ...(path ? byMedia.get(mediaKey(path)) ?? [] : [])];
+    if (!ids.length) continue;
     const s = Date.parse(item.start), f = Date.parse(item.finish);
     while (gi < g.length && g[gi].stopMs <= s + SLACK_MS) gi++;
     const cur = gi < g.length && g[gi].startMs <= s + SLACK_MS ? g[gi] : undefined;
@@ -812,7 +837,10 @@ export async function applyOverlays(
     for (const ref of [...new Set(ids)]) {
       const o = find(ref);
       if (!o) { missing.add(ref); continue; }
-      if (filler && !o.duringFiller) continue;
+      if (o.timing?.mode === "media") {
+        // only over its own file (a channel can list it too; it still waits for the file), filler or not
+        if (!path || !o.timing.media?.path || mediaKey(path) !== mediaKey(o.timing.media.path)) continue;
+      } else if (filler && !o.duringFiller) continue;
       if (!inSeason(o.season, s, tz)) continue;
       const progSpan = cur ? (span.get(cur) ?? cur) : undefined;
       // animated: the transition clip (canvas) + the held still between transitions

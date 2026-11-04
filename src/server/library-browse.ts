@@ -3,6 +3,12 @@
 // artwork (served by proxying the provider, e.g. Plex, like legacy did).
 import { DatabaseSync } from "node:sqlite";
 
+/** Whether a path is one of the library's media files (so a page may read frames from it). */
+export function isLibraryFile(dbPath: string, path: string): boolean {
+  const db = open(dbPath);
+  try { return !!db.prepare("SELECT 1 FROM MediaFile WHERE Path = ? LIMIT 1").get(path); } finally { db.close(); }
+}
+
 function open(dbPath: string): DatabaseSync {
   // A normal read-only handle sees what a scan just wrote (still in the WAL);
   // `immutable` ignores the WAL, so it's only the fallback for filesystems where a

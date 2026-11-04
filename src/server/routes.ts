@@ -25,7 +25,7 @@ import { fallbackChoice, renderStandby } from "./fallback-image.js";
 import { effectiveDbPath } from "./library-import.js";
 import { listSources, listLibraries, listTrash, emptyTrash, libraryExists, createLocalLibrary, deleteLibrary, deleteSource, listLibraryPaths, addLibraryPath, updateLibraryPath, removeLibraryPath, addRemoteSource, upsertDiscoveredLibraries, listPathReplacements, addPathReplacement, updatePathReplacement, removePathReplacement } from "./library-repo.js";
 import { readSourceInfo, discoverLibraries } from "./scanner-remote.js";
-import { kindCounts, listCards, letterOffsets, listSeasons, listEpisodes, itemDetail, artworkTarget, listShowTitles } from "./library-browse.js";
+import { kindCounts, listCards, letterOffsets, listSeasons, listEpisodes, itemDetail, artworkTarget, listShowTitles, isLibraryFile } from "./library-browse.js";
 import { listCollections, collectionItems, createCollection, updateCollection, deleteCollection, collectionsContaining, addToCollection, removeFromCollection, playlistEntries, addPlaylistEntry, updatePlaylistEntry, reorderPlaylist, removePlaylistEntry, playlistsContaining, collectionMeta, type CollectionType } from "./library-collections.js";
 import { Enumerator, PlaylistEnumerator } from "../resolver.js";
 import { groupSegments } from "../segments.js";
@@ -942,6 +942,28 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   app.get("/overlay-pictures/match", async (req, reply) => {
     const q = req.query as { name?: string; kind?: string };
     return sendPicture(reply, findPicture(String(q.name ?? ""), q.kind === "video" ? "video" : "image", picturesDir()) || null);
+  });
+  // one frame of a library file, for the designer's reference picture (any format
+  // ffmpeg reads, unlike the browser); only files that are in the library
+  app.get("/api/overlays/reference-frame", async (req, reply) => {
+    const q = req.query as { path?: string; t?: string };
+    const path = String(q.path ?? "");
+    if (!path || !libraryExists(libDb()) || !isLibraryFile(libDb(), path)) return reply.code(404).send({ error: "That file isn't in the library." });
+    if (!existsSync(path)) return reply.code(404).send({ error: "That file isn't reachable from this computer." });
+    const nc = store.getNextConfig();
+    const ffmpeg = nc.ffmpegPath ? abs(nc.ffmpegPath) : "ffmpeg";
+    const t = Math.max(0, Number(q.t) || 0);
+    const jpg = await new Promise<Buffer | null>((done) => {
+      const p = spawn(ffmpeg, ["-hide_banner", "-loglevel", "error", "-ss", t.toFixed(3), "-i", path, "-frames:v", "1", "-vf", "scale=1280:-2", "-q:v", "4", "-f", "image2", "-c:v", "mjpeg", "pipe:1"], { windowsHide: true });
+      const chunks: Buffer[] = [];
+      p.stdout.on("data", (d: Buffer) => chunks.push(d));
+      const kill = setTimeout(() => p.kill(), 20_000);
+      p.on("error", () => { clearTimeout(kill); done(null); });
+      p.on("close", () => { clearTimeout(kill); done(chunks.length ? Buffer.concat(chunks) : null); });
+    });
+    if (!jpg) return reply.code(500).send({ error: "ffmpeg couldn't read a frame there." });
+    reply.header("content-type", "image/jpeg").header("cache-control", "private, max-age=3600");
+    return reply.send(jpg);
   });
   // exactly what a build draws for the still layers (server fonts), with sample
   // or given template values; PNG cropped to the layers, plus where it sits

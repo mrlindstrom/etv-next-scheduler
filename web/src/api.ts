@@ -25,7 +25,11 @@ export type OverlayLayer =
   | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
   | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
   | (OvBox & { type: "video"; src: string; fallback?: string });
-export interface OverlayTiming { mode: "always" | "every" | "start" | "end"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number }
+export interface OverlayTiming { mode: "always" | "every" | "start" | "end" | "media"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number; media?: OverlayMedia }
+/** The file that sets off a "when a video plays" overlay. */
+export interface OverlayMedia { path: string; title?: string; durationMs?: number }
+/** One frame of a library file (drawn by the server's ffmpeg), for the designer's reference. */
+export const referenceFrameUrl = (path: string, t: number) => `/api/overlays/reference-frame?path=${encodeURIComponent(path)}&t=${t.toFixed(2)}`;
 export type OverlayLocation = "top_left" | "top_center" | "top_right" | "center_left" | "center" | "center_right" | "bottom_left" | "bottom_center" | "bottom_right";
 export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
 export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }

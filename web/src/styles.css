@@ -521,6 +521,11 @@ th[aria-sort=ascending], th[aria-sort=descending] { color: var(--accent-hi); }
 .ov-align { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .ov-align-label { color: var(--muted, #94a3b8); min-width: 40px; }
 .ov-align .ov-seg { flex-wrap: nowrap; }
+/* overlay designer: "when a video plays" — the video and the library search */
+.ov-media { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ov-media-list { display: flex; flex-direction: column; gap: 3px; max-height: 260px; overflow-y: auto; }
+.ov-media-row { display: flex; justify-content: space-between; gap: 10px; text-align: left; padding: 6px 9px; font-size: 13px; }
+.ov-media-row span:last-child { white-space: nowrap; font-size: 12px; }
 /* overlay designer: each layer's time on screen within an appearance */
 .ov-timeline { --tl-name: 170px; position: relative; margin: 8px 0 4px; padding: 6px 8px; border: 1px solid var(--line2); border-radius: var(--radius-sm); font-size: 12px; }
 .ov-tl-row { display: grid; grid-template-columns: var(--tl-name) 1fr; align-items: center; height: 20px; cursor: pointer; border-radius: 4px; }
