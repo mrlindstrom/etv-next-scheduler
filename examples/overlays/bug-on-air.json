@@ -1,0 +1,35 @@
+{
+  "category": "Bugs",
+  "name": "On-air dot",
+  "description": "A red dot beside the channel name, always on.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 85,
+  "layers": [
+    {
+      "type": "image",
+      "src": "example:red-dot.svg",
+      "x": 1560,
+      "y": 64,
+      "w": 40,
+      "h": 40
+    },
+    {
+      "type": "text",
+      "x": 1610,
+      "y": 64,
+      "w": 220,
+      "h": 40,
+      "text": "{{channel}}",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "upper": true,
+      "fit": true,
+      "outline": "#000000",
+      "outlineWidth": 3
+    }
+  ]
+}

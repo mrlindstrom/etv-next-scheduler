@@ -1,0 +1,106 @@
+{
+  "category": "Lower thirds",
+  "name": "Show picture lower third",
+  "description": "The show's own picture (or the channel logo) beside its name and episode.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 45,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 830,
+      "w": 1020,
+      "h": 170,
+      "color": "#111827",
+      "radius": 16,
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{show}}",
+      "x": 112,
+      "y": 846,
+      "w": 246,
+      "h": 138,
+      "fallback": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 380,
+      "y": 852,
+      "w": 710,
+      "h": 64,
+      "text": "{{show}}",
+      "size": 50,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 380,
+      "y": 922,
+      "w": 710,
+      "h": 44,
+      "text": "{{episode_code}} · {{title}}",
+      "size": 30,
+      "color": "#93c5fd",
+      "font": "Segoe UI",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.5,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

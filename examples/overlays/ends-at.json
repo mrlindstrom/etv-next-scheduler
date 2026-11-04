@@ -1,0 +1,79 @@
+{
+  "category": "Lower thirds",
+  "name": "Until … reminder",
+  "description": "Five minutes in, a small tag with the show and when it ends.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 300,
+    "showSeconds": 8
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 1380,
+      "y": 930,
+      "w": 444,
+      "h": 70,
+      "color": "#111827",
+      "radius": 12,
+      "opacity": 88,
+      "anim": {
+        "in": {
+          "type": "slide_right",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_right",
+          "duration": 0.35,
+          "delay": 0.1
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "example:clock.svg",
+      "x": 1394,
+      "y": 945,
+      "w": 40,
+      "h": 40,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1446,
+      "y": 944,
+      "w": 364,
+      "h": 44,
+      "text": "{{show}} · until {{end_time}}",
+      "size": 28,
+      "color": "#ffffff",
+      "font": "Arial",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

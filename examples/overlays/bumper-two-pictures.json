@@ -1,0 +1,122 @@
+{
+  "category": "Bumpers",
+  "name": "Up-next bumper — two pictures",
+  "description": "For a pre-made up-next video with two empty spots: pick your video, then drag the pictures into place and time them.",
+  "timing": {
+    "mode": "media",
+    "showSeconds": 10,
+    "offsetSeconds": 0
+  },
+  "layers": [
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 380,
+      "y": 330,
+      "w": 480,
+      "h": 270,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 2
+      },
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 380,
+      "y": 610,
+      "w": 480,
+      "h": 60,
+      "text": "{{next_show}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "shadow": true,
+      "appear": {
+        "at": 2.3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next2_show}}",
+      "x": 1060,
+      "y": 330,
+      "w": 480,
+      "h": 270,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1060,
+      "y": 610,
+      "w": 480,
+      "h": 60,
+      "text": "{{next2_show}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "shadow": true,
+      "appear": {
+        "at": 3.3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

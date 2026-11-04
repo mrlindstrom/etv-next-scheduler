@@ -1,0 +1,179 @@
+{
+  "category": "Schedules",
+  "name": "Now / Next bar",
+  "description": "A bottom bar: what's on now, and what's next with its time. Every 15 minutes.",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 15,
+    "showSeconds": 10,
+    "offsetSeconds": 300
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 930,
+      "w": 1728,
+      "h": 70,
+      "color": "#0f172a",
+      "radius": 35,
+      "opacity": 92,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 930,
+      "w": 150,
+      "h": 70,
+      "color": "#16a34a",
+      "radius": 35,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.2
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 96,
+      "y": 946,
+      "w": 150,
+      "h": 40,
+      "text": "NOW",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 270,
+      "y": 944,
+      "w": 680,
+      "h": 44,
+      "text": "{{show}}",
+      "size": 32,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.35,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 970,
+      "y": 930,
+      "w": 150,
+      "h": 70,
+      "color": "#2563eb",
+      "radius": 35,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.4
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 970,
+      "y": 946,
+      "w": 150,
+      "h": 40,
+      "text": "NEXT",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.5
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1144,
+      "y": 944,
+      "w": 660,
+      "h": 44,
+      "text": "{{next_start_time}}  {{next_show}}",
+      "size": 32,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.55,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

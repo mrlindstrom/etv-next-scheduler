@@ -1,0 +1,72 @@
+{
+  "category": "Bumpers",
+  "name": "Bumper — show name and time",
+  "description": "For a bumper with a blank space for words: the next show's name and time, typed in.",
+  "timing": {
+    "mode": "media",
+    "showSeconds": 8,
+    "offsetSeconds": 0
+  },
+  "layers": [
+    {
+      "type": "text",
+      "x": 260,
+      "y": 470,
+      "w": 1400,
+      "h": 110,
+      "text": "{{next_show}}",
+      "size": 88,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "fit": true,
+      "shadow": true,
+      "appear": {
+        "at": 1.5
+      },
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 0.9,
+          "delay": 0,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 260,
+      "y": 590,
+      "w": 1400,
+      "h": 60,
+      "text": "TONIGHT AT {{next_start_time}}",
+      "size": 44,
+      "color": "#fde047",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "shadow": true,
+      "appear": {
+        "at": 2.6
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

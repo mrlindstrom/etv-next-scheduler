@@ -1,0 +1,20 @@
+{
+  "category": "Bugs",
+  "name": "Show picture bug",
+  "description": "A small picture of the show that's on, in the corner — the channel logo when there's no picture for it.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 70,
+  "layers": [
+    {
+      "type": "image",
+      "src": "match:{{show}}",
+      "x": 1640,
+      "y": 860,
+      "w": 200,
+      "h": 113,
+      "fallback": "channel-logo"
+    }
+  ]
+}

@@ -1,0 +1,107 @@
+{
+  "category": "Schedules",
+  "name": "Later tonight",
+  "description": "Ten minutes into each show: a quiet note of what's on after the next show.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 600,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 880,
+      "w": 1000,
+      "h": 120,
+      "color": "#000000",
+      "gradient": {
+        "to": "transparent"
+      },
+      "opacity": 80,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "example:clock.svg",
+      "x": 116,
+      "y": 902,
+      "w": 40,
+      "h": 40,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 170,
+      "y": 896,
+      "w": 900,
+      "h": 40,
+      "text": "LATER ON {{channel}}",
+      "size": 26,
+      "color": "#fbbf24",
+      "font": "Arial",
+      "bold": true,
+      "upper": true,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.35,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 170,
+      "y": 940,
+      "w": 900,
+      "h": 44,
+      "text": "{{next2_start_time}} {{next2_show}}  ·  {{next3_start_time}} {{next3_show}}",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.45,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,111 @@
+{
+  "category": "Retro",
+  "name": "80s network — Next!",
+  "description": "Rainbow stripes fly in, \"NEXT!\" in chunky letters, then the show — straight out of 1986.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 60,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "image",
+      "src": "example:stripes-80s.svg",
+      "x": 96,
+      "y": 800,
+      "w": 420,
+      "h": 140,
+      "anim": {
+        "in": {
+          "type": "fly_left",
+          "duration": 0.6,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_left",
+          "duration": 0.5,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 140,
+      "y": 790,
+      "w": 500,
+      "h": 120,
+      "text": "NEXT!",
+      "size": 100,
+      "color": "#ffffff",
+      "font": "Impact",
+      "outline": "#1e1b4b",
+      "outlineWidth": 8,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 540,
+      "y": 820,
+      "w": 1200,
+      "h": 90,
+      "text": "{{next_show}}",
+      "size": 72,
+      "color": "#fde047",
+      "font": "Impact",
+      "outline": "#1e1b4b",
+      "outlineWidth": 6,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "delay": 0.5,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 540,
+      "y": 910,
+      "w": 1200,
+      "h": 50,
+      "text": "{{next_start_time}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Impact",
+      "outline": "#1e1b4b",
+      "outlineWidth": 4,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "delay": 0.65,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

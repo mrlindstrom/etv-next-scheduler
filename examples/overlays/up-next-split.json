@@ -1,0 +1,189 @@
+{
+  "category": "Up next",
+  "name": "Up next — next & then pictures",
+  "description": "Two matching columns: the next show and the one after it, each with its time, picture and name. \"Then\" joins two seconds in.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 100,
+    "showSeconds": 14
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 640,
+      "w": 1000,
+      "h": 360,
+      "color": "#0b1120",
+      "radius": 18,
+      "opacity": 93,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.35
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 126,
+      "y": 658,
+      "w": 450,
+      "h": 40,
+      "text": "NEXT · {{next_start_time}}",
+      "size": 28,
+      "color": "#22d3ee",
+      "font": "Arial Black",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.35,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 126,
+      "y": 706,
+      "w": 450,
+      "h": 220,
+      "fallback": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.45
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 126,
+      "y": 934,
+      "w": 450,
+      "h": 50,
+      "text": "{{next_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.55,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 616,
+      "y": 658,
+      "w": 450,
+      "h": 40,
+      "text": "THEN · {{next2_start_time}}",
+      "size": 28,
+      "color": "#a78bfa",
+      "font": "Arial Black",
+      "bold": true,
+      "appear": {
+        "at": 2
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next2_show}}",
+      "x": 616,
+      "y": 706,
+      "w": 450,
+      "h": 220,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 2
+      },
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.1
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 616,
+      "y": 934,
+      "w": 450,
+      "h": 50,
+      "text": "{{next2_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "appear": {
+        "at": 2
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

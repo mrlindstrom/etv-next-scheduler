@@ -1,0 +1,87 @@
+{
+  "category": "Retro",
+  "name": "90s kids splat",
+  "description": "An orange splat pops, then \"COMING UP NEXT\" and the show bounce in.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 45,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "image",
+      "src": "example:splat.svg",
+      "x": 1300,
+      "y": 680,
+      "w": 520,
+      "h": 390,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1340,
+      "y": 760,
+      "w": 440,
+      "h": 60,
+      "text": "COMING UP NEXT",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "outline": "#7c2d12",
+      "outlineWidth": 5,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.25
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1340,
+      "y": 830,
+      "w": 440,
+      "h": 100,
+      "text": "{{next_show}}",
+      "size": 56,
+      "color": "#fef08a",
+      "font": "Comic Sans MS",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "outline": "#7c2d12",
+      "outlineWidth": 5,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.45
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

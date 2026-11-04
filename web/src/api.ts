@@ -23,7 +23,7 @@ interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; 
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string; fallback?: string })
   | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
-  | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
+  | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number; gradient?: { to: string; dir?: "right" | "down" } })
   | (OvBox & { type: "video"; src: string; fallback?: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end" | "media"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number; media?: OverlayMedia }
 /** The file that sets off a "when a video plays" overlay. */

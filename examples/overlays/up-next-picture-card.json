@@ -1,0 +1,151 @@
+{
+  "category": "Up next",
+  "name": "Up next — picture card",
+  "description": "A rounded card with the next show's picture (or the channel logo), its name, episode and start time.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 90,
+    "showSeconds": 12
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 760,
+      "w": 940,
+      "h": 240,
+      "color": "#0f172a",
+      "radius": 18,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 760,
+      "w": 12,
+      "h": 240,
+      "color": "#38bdf8",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.1
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 128,
+      "y": 784,
+      "w": 340,
+      "h": 192,
+      "fallback": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.35
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 500,
+      "y": 784,
+      "w": 510,
+      "h": 40,
+      "text": "UP NEXT · {{next_start_time}}",
+      "size": 28,
+      "color": "#38bdf8",
+      "font": "Arial Black",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 500,
+      "y": 830,
+      "w": 510,
+      "h": 72,
+      "text": "{{next_show}}",
+      "size": 56,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.5,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 500,
+      "y": 910,
+      "w": 510,
+      "h": 44,
+      "text": "{{next_title}}",
+      "size": 30,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.6,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.05
+        }
+      }
+    }
+  ]
+}

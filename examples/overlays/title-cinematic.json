@@ -1,0 +1,127 @@
+{
+  "category": "Title cards",
+  "name": "Cinematic title",
+  "description": "Letterbox bars slide in, the title fades up between them with its year — a movie opener.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 2,
+    "showSeconds": 8
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 130,
+      "color": "#000000",
+      "anim": {
+        "in": {
+          "type": "fly_down",
+          "duration": 0.6,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_down",
+          "duration": 0.5,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 0,
+      "y": 950,
+      "w": 1920,
+      "h": 130,
+      "color": "#000000",
+      "anim": {
+        "in": {
+          "type": "fly_up",
+          "duration": 0.6,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_up",
+          "duration": 0.5,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "example:vignette.svg",
+      "x": 160,
+      "y": 240,
+      "w": 1600,
+      "h": 600,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.8,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 430,
+      "w": 1600,
+      "h": 140,
+      "text": "{{show}}",
+      "size": 110,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "fit": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "zoom",
+          "duration": 0.6,
+          "delay": 0.5
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 580,
+      "w": 1600,
+      "h": 60,
+      "text": "{{year}}",
+      "size": 40,
+      "color": "#e5e7eb",
+      "font": "Georgia",
+      "italic": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 1.1
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

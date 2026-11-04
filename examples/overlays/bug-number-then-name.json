@@ -1,0 +1,95 @@
+{
+  "category": "Bugs",
+  "name": "Number, then name",
+  "description": "Every 5 minutes: the channel number pops up, then swaps to the channel name.",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 5,
+    "showSeconds": 12,
+    "offsetSeconds": 0
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 1620,
+      "y": 900,
+      "w": 220,
+      "h": 90,
+      "color": "#000000",
+      "radius": 14,
+      "opacity": 70,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1620,
+      "y": 906,
+      "w": 220,
+      "h": 78,
+      "text": "{{number}}",
+      "size": 64,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "appear": {
+        "at": 0,
+        "for": 6
+      },
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.1
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1630,
+      "y": 906,
+      "w": 200,
+      "h": 78,
+      "text": "{{channel}}",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "fit": true,
+      "appear": {
+        "at": 6
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

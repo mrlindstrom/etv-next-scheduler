@@ -42,7 +42,8 @@ export type OverlayLayer =
       outline?: string; outlineWidth?: number; shadow?: boolean;
       fit?: boolean;   // shrink to fit: keep it on one line, smaller when it's too long for the box
     })
-  | (Box & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number })
+  // gradient: from `color` to `to` ("transparent" = fade the colour out), across or down
+  | (Box & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number; gradient?: { to: string; dir?: "right" | "down" } })
   | (Box & { type: "video"; src: string; fallback?: string });
 
 export interface OverlayTiming {
@@ -313,7 +314,13 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string, 
     let el = "";
     if (l.type === "box") {
       const bw = num(l.borderWidth, 0);
-      el = `<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${num(l.radius, 0)}" fill="${esc(l.color || "#000000")}"${bw > 0 ? ` stroke="${esc(l.border || "#ffffff")}" stroke-width="${bw}"` : ""}${op}/>`;
+      let fill = esc(l.color || "#000000");
+      if (l.gradient?.to) {
+        const fade = l.gradient.to === "transparent", down = l.gradient.dir === "down";
+        defs += `<linearGradient id="g${i}" x1="0" y1="0" x2="${down ? 0 : 1}" y2="${down ? 1 : 0}"><stop offset="0" stop-color="${fill}"/><stop offset="1" stop-color="${fade ? fill : esc(l.gradient.to)}" stop-opacity="${fade ? 0 : 1}"/></linearGradient>`;
+        fill = `url(#g${i})`;
+      }
+      el = `<rect x="${l.x}" y="${l.y}" width="${l.w}" height="${l.h}" rx="${num(l.radius, 0)}" fill="${fill}"${bw > 0 ? ` stroke="${esc(l.border || "#ffffff")}" stroke-width="${bw}"` : ""}${op}/>`;
     } else if (l.type === "image") {
       // a picture picked by the schedule, else its fallback (quiet: a miss with a fallback isn't a problem)
       const a = readAsset(resolveSrc(l.src, v), !!l.fallback) ?? (l.fallback ? readAsset(resolveSrc(l.fallback, v)) : null);
@@ -776,8 +783,10 @@ export async function applyOverlays(
       let p = assetPath(want, opts.assetsDir, opts.channelLogo);
       if (!p && alt) p = assetPath(alt, opts.assetsDir, opts.channelLogo);
       if (!p && want.startsWith(MATCH_PREFIX)) {
-        // nothing picked for this programme: no picture this time (not a problem with the overlay)
-        if (want.length > MATCH_PREFIX.length) unmatched.add(want.slice(MATCH_PREFIX.length));
+        // nothing picked for this programme: no picture this time (not a problem with the
+        // overlay). With a fallback, only the fallback's own trouble is worth saying.
+        if (!alt) { if (want.length > MATCH_PREFIX.length) unmatched.add(want.slice(MATCH_PREFIX.length)); }
+        else if (alt === CHANNEL_LOGO) out.problems.push("the channel has no logo file for its logo overlay");
       } else if (p && existsSync(p)) {
         const shown = o.anchor && o.layers.length === 1 ? (o.anchor.widthPercent ? (o.anchor.widthPercent / 100) * ARTBOARD.w : 0) : only.w;
         // ffmpeg can't read SVG: draw it to a PNG at twice its on-screen size

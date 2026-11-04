@@ -1,0 +1,601 @@
+{
+  "category": "Schedules",
+  "name": "Full schedule card",
+  "description": "Now playing plus the next three, each row with its picture, appearing one by one — great near the end of a show.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 180,
+    "showSeconds": 20
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 500,
+      "y": 120,
+      "w": 920,
+      "h": 840,
+      "color": "#0b1120",
+      "radius": 22,
+      "opacity": 90,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.4
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 520,
+      "y": 140,
+      "w": 880,
+      "h": 60,
+      "text": "{{channel}} · SCHEDULE",
+      "size": 42,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "upper": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 520,
+      "y": 220,
+      "w": 880,
+      "h": 166,
+      "color": "#1e3a8a",
+      "radius": 10,
+      "opacity": 92,
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{show}}",
+      "x": 532,
+      "y": 230,
+      "w": 200,
+      "h": 146,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 752,
+      "y": 232,
+      "w": 150,
+      "h": 40,
+      "text": "{{start_time}}",
+      "size": 30,
+      "color": "#fbbf24",
+      "font": "Arial",
+      "bold": true,
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.1,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 230,
+      "w": 400,
+      "h": 50,
+      "text": "{{show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.15,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 276,
+      "w": 400,
+      "h": 36,
+      "text": "ON NOW · until {{end_time}}",
+      "size": 24,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "fit": true,
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 520,
+      "y": 400,
+      "w": 880,
+      "h": 166,
+      "color": "#111827",
+      "radius": 10,
+      "opacity": 92,
+      "appear": {
+        "at": 1.7999999999999998
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 532,
+      "y": 410,
+      "w": 200,
+      "h": 146,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 1.7999999999999998
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 752,
+      "y": 412,
+      "w": 150,
+      "h": 40,
+      "text": "{{next_start_time}}",
+      "size": 30,
+      "color": "#93c5fd",
+      "font": "Arial",
+      "bold": true,
+      "appear": {
+        "at": 1.7999999999999998
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.1,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 410,
+      "w": 400,
+      "h": 50,
+      "text": "{{next_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 1.7999999999999998
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.15,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 456,
+      "w": 400,
+      "h": 36,
+      "text": "{{next_title}}",
+      "size": 24,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "fit": true,
+      "appear": {
+        "at": 1.7999999999999998
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 520,
+      "y": 580,
+      "w": 880,
+      "h": 166,
+      "color": "#111827",
+      "radius": 10,
+      "opacity": 92,
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next2_show}}",
+      "x": 532,
+      "y": 590,
+      "w": 200,
+      "h": 146,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 752,
+      "y": 592,
+      "w": 150,
+      "h": 40,
+      "text": "{{next2_start_time}}",
+      "size": 30,
+      "color": "#93c5fd",
+      "font": "Arial",
+      "bold": true,
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.1,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 590,
+      "w": 400,
+      "h": 50,
+      "text": "{{next2_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.15,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 636,
+      "w": 400,
+      "h": 36,
+      "text": "{{next2_title}}",
+      "size": 24,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "fit": true,
+      "appear": {
+        "at": 3
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 520,
+      "y": 760,
+      "w": 880,
+      "h": 166,
+      "color": "#111827",
+      "radius": 10,
+      "opacity": 92,
+      "appear": {
+        "at": 4.199999999999999
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next3_show}}",
+      "x": 532,
+      "y": 770,
+      "w": 200,
+      "h": 146,
+      "fallback": "channel-logo",
+      "appear": {
+        "at": 4.199999999999999
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 752,
+      "y": 772,
+      "w": 150,
+      "h": 40,
+      "text": "{{next3_start_time}}",
+      "size": 30,
+      "color": "#93c5fd",
+      "font": "Arial",
+      "bold": true,
+      "appear": {
+        "at": 4.199999999999999
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.1,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 770,
+      "w": 400,
+      "h": 50,
+      "text": "{{next3_show}}",
+      "size": 36,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 4.199999999999999
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.15,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 912,
+      "y": 816,
+      "w": 400,
+      "h": 36,
+      "text": "{{next3_title}}",
+      "size": 24,
+      "color": "#cbd5e1",
+      "font": "Segoe UI",
+      "fit": true,
+      "appear": {
+        "at": 4.199999999999999
+      },
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.2,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

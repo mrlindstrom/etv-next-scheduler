@@ -1,0 +1,153 @@
+{
+  "category": "Up next",
+  "name": "Up next — feature presentation",
+  "description": "Gold and black, for movies: the next feature's picture, title, year and start time.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 120,
+    "showSeconds": 14
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 720,
+      "w": 1180,
+      "h": 280,
+      "color": "#000000",
+      "gradient": {
+        "to": "transparent"
+      },
+      "opacity": 85,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 720,
+      "w": 8,
+      "h": 280,
+      "color": "#fbbf24",
+      "anim": {
+        "in": {
+          "type": "wipe_up",
+          "duration": 0.45,
+          "delay": 0.1
+        },
+        "out": {
+          "type": "wipe_down",
+          "duration": 0.35,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 130,
+      "y": 744,
+      "w": 230,
+      "h": 230,
+      "fallback": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "zoom",
+          "duration": 0.6,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 390,
+      "y": 750,
+      "w": 860,
+      "h": 40,
+      "text": "COMING UP · FEATURE PRESENTATION",
+      "size": 26,
+      "color": "#fbbf24",
+      "font": "Georgia",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.4
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 390,
+      "y": 798,
+      "w": 860,
+      "h": 88,
+      "text": "{{next_show}}",
+      "size": 70,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "fit": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.55,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 390,
+      "y": 896,
+      "w": 860,
+      "h": 46,
+      "text": "{{next_year}} · starts at {{next_start_time}}",
+      "size": 32,
+      "color": "#e5e7eb",
+      "font": "Georgia",
+      "italic": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.7,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

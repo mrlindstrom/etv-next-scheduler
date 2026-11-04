@@ -1,0 +1,87 @@
+{
+  "category": "Up next",
+  "name": "Stay tuned",
+  "description": "\"STAY TUNED\" pops in near the very end, then types out what's next.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 25,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 560,
+      "y": 820,
+      "w": 800,
+      "h": 180,
+      "color": "#7c3aed",
+      "radius": 90,
+      "opacity": 95,
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 560,
+      "y": 838,
+      "w": 800,
+      "h": 80,
+      "text": "STAY TUNED",
+      "size": 64,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "pop",
+          "duration": 0.5,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 600,
+      "y": 920,
+      "w": 720,
+      "h": 50,
+      "text": "{{next_show}} is next",
+      "size": 34,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "align": "center",
+      "fit": true,
+      "appear": {
+        "at": 1.5
+      },
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 1,
+          "delay": 0,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

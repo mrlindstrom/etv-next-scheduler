@@ -1,0 +1,83 @@
+{
+  "category": "Retro",
+  "name": "VHS play screen",
+  "description": "Green on-screen-display text: PLAY with the show, the channel number and the time — like a VCR.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 1,
+    "showSeconds": 7
+  },
+  "layers": [
+    {
+      "type": "text",
+      "x": 120,
+      "y": 80,
+      "w": 900,
+      "h": 60,
+      "text": "PLAY   {{show}}",
+      "size": 48,
+      "color": "#4ade80",
+      "font": "Courier New",
+      "bold": true,
+      "outline": "#052e16",
+      "outlineWidth": 3,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 0.6,
+          "delay": 0,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1400,
+      "y": 80,
+      "w": 400,
+      "h": 60,
+      "text": "CH {{number}}",
+      "size": 48,
+      "color": "#4ade80",
+      "font": "Courier New",
+      "bold": true,
+      "align": "right",
+      "outline": "#052e16",
+      "outlineWidth": 3
+    },
+    {
+      "type": "text",
+      "x": 120,
+      "y": 960,
+      "w": 900,
+      "h": 50,
+      "text": "{{start_time}}  SP",
+      "size": 40,
+      "color": "#4ade80",
+      "font": "Courier New",
+      "bold": true,
+      "outline": "#052e16",
+      "outlineWidth": 3,
+      "appear": {
+        "at": 0.8
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.1,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "category": "Lower thirds",
+  "name": "Episode info pill",
+  "description": "A small rounded pill top-left with the season, episode and year, typed out every 20 minutes.",
+  "timing": {
+    "mode": "every",
+    "everyMinutes": 20,
+    "showSeconds": 8,
+    "offsetSeconds": 120
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 64,
+      "w": 420,
+      "h": 56,
+      "color": "#000000",
+      "radius": 28,
+      "opacity": 70,
+      "anim": {
+        "in": {
+          "type": "expand",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "expand",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "example:play.svg",
+      "x": 110,
+      "y": 74,
+      "w": 36,
+      "h": 36,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.2
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 156,
+      "y": 74,
+      "w": 350,
+      "h": 40,
+      "text": "{{episode_code}} · {{year}}",
+      "size": 28,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "bold": true,
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 0.8,
+          "delay": 0.3,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

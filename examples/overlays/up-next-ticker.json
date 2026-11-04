@@ -1,0 +1,102 @@
+{
+  "category": "Up next",
+  "name": "Up next — schedule ticker",
+  "description": "A slim bar across the top with the next three shows and their times.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 120,
+    "showSeconds": 12
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 0,
+      "y": 54,
+      "w": 1920,
+      "h": 64,
+      "color": "#000000",
+      "opacity": 80,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.2
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 54,
+      "w": 190,
+      "h": 64,
+      "color": "#dc2626",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.1
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.1
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 96,
+      "y": 66,
+      "w": 190,
+      "h": 40,
+      "text": "COMING UP",
+      "size": 26,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 310,
+      "y": 64,
+      "w": 1520,
+      "h": 44,
+      "text": "{{next_start_time}}  {{next_show}}    •    {{next2_start_time}}  {{next2_show}}    •    {{next3_start_time}}  {{next3_show}}",
+      "size": 30,
+      "color": "#ffffff",
+      "font": "Segoe UI",
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 1.6,
+          "delay": 0.4,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

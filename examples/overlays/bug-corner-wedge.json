@@ -1,0 +1,32 @@
+{
+  "category": "Bugs",
+  "name": "Corner wedge",
+  "description": "A dark corner wedge with a gold stripe and the channel number, always on.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 85,
+  "layers": [
+    {
+      "type": "image",
+      "src": "example:corner-wedge.svg",
+      "x": 1620,
+      "y": 780,
+      "w": 300,
+      "h": 300
+    },
+    {
+      "type": "text",
+      "x": 1760,
+      "y": 970,
+      "w": 140,
+      "h": 70,
+      "text": "{{number}}",
+      "size": 56,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "right"
+    }
+  ]
+}

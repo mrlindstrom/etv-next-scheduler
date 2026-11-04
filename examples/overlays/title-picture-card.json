@@ -1,0 +1,87 @@
+{
+  "category": "Title cards",
+  "name": "Picture title card",
+  "description": "The show's picture big in the middle with its name underneath, as it starts.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 3,
+    "showSeconds": 6
+  },
+  "layers": [
+    {
+      "type": "image",
+      "src": "match:{{show}}",
+      "x": 660,
+      "y": 260,
+      "w": 600,
+      "h": 338,
+      "anim": {
+        "in": {
+          "type": "zoom",
+          "duration": 0.6,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 260,
+      "y": 620,
+      "w": 1400,
+      "h": 100,
+      "text": "{{show}}",
+      "size": 80,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 260,
+      "y": 724,
+      "w": 1400,
+      "h": 50,
+      "text": "{{title}}",
+      "size": 38,
+      "color": "#e5e7eb",
+      "font": "Arial",
+      "align": "center",
+      "fit": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.45,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

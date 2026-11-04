@@ -133,7 +133,7 @@ export function Overlays() {
   // an empty library opens straight onto the examples
   const showGallery = picking || (list !== null && list.length === 0);
   const sample = Object.fromEntries(fields.map((f) => [f.key, f.sample]));
-  const ORDER = ["Lower thirds", "Up next", "Bugs", "Title cards", "Holidays"];
+  const ORDER = ["Up next", "Lower thirds", "Schedules", "Bumpers", "Bugs", "Title cards", "Retro", "Holidays"];
   const groups = [...new Set(examples.map((e) => e.category || "More"))].sort((x, y) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99));
 
   const load = useCallback(async () => {
@@ -214,7 +214,10 @@ function Thumb({ o, vars }: { o: Overlay; vars: Record<string, string> }) {
     const l = o.layers[0];
     if (o.anchor && o.layers.length === 1 && l?.type === "image") mediaSize(overlayAssetSrc(l.src), false).then((s) => setBox(anchorBox(o, s.w, s.h)));
   }, [o]);
-  const layers = box ? [{ ...o.layers[0], ...box }] : o.layers;
+  // layers on their own times: show the late part of the appearance, as it airs
+  const showMs = Math.max(1, Number(o.timing?.showSeconds ?? 10) || 10) * 1000;
+  const late = (o.timing?.mode ?? "always") !== "always" && hasLayerTiming(o.layers) ? Math.max(0, showMs - 1600) : null;
+  const layers = box ? [{ ...o.layers[0], ...box }] : late == null ? o.layers : o.layers.filter((l) => { const w = layerWindow(l, showMs); return late >= w.start && late < w.end; });
   return (
     <div ref={ref} className="ov-thumb">
       {layers.map((l, i) => <LayerView key={i} l={l} scale={scale} vars={vars} />)}
@@ -806,11 +809,18 @@ function measure(t: string, font: string, size: number, bold: boolean, italic: b
   measureCtx.font = `${italic ? "italic " : ""}${bold ? 700 : 400} ${size}px ${font}, Arial, sans-serif`;
   return measureCtx.measureText(t).width;
 }
+/** A box's CSS background: its colour, or its gradient (as builds draw it). */
+function boxFill(l: Extract<Layer, { type: "box" }>): string {
+  const c = l.color || "#000000";
+  if (!l.gradient?.to) return c;
+  const to = l.gradient.to === "transparent" ? `${c.length === 7 ? c : "#000000"}00` : l.gradient.to;
+  return `linear-gradient(${l.gradient.dir === "down" ? "to bottom" : "to right"}, ${c}, ${to})`;
+}
 function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: number; vars: Record<string, string>; inner?: boolean; chars?: number }) {
   // explicit width / height: images and videos ignore inset:0 and show at their own pixel size
   const pos: React.CSSProperties = inner ? { position: "absolute", left: 0, top: 0, width: "100%", height: "100%" } : { position: "absolute", left: l.x * scale, top: l.y * scale, width: l.w * scale, height: l.h * scale };
   const op = l.opacity != null && l.opacity < 100 ? l.opacity / 100 : undefined;
-  if (l.type === "box") return <div style={{ ...pos, background: l.color || "#000", borderRadius: (l.radius ?? 0) * scale, opacity: op, border: l.borderWidth ? `${l.borderWidth * scale}px solid ${l.border || "#fff"}` : undefined, boxSizing: "border-box" }} />;
+  if (l.type === "box") return <div style={{ ...pos, background: boxFill(l), borderRadius: (l.radius ?? 0) * scale, opacity: op, border: l.borderWidth ? `${l.borderWidth * scale}px solid ${l.border || "#fff"}` : undefined, boxSizing: "border-box" }} />;
   if ((l.type === "image" || l.type === "video") && l.src.startsWith(MATCH_PREFIX)) return <MatchImage src={l.src} fallback={l.fallback} vars={vars} video={l.type === "video"} style={{ ...pos, opacity: op, pointerEvents: "none" }} />;
   if (l.type === "image") return <img src={overlayAssetSrc(l.src)} draggable={false} alt="" style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
   if (l.type === "video") return <video src={overlayAssetSrc(l.src)} muted loop autoPlay playsInline style={{ ...pos, objectFit: "contain", opacity: op, pointerEvents: "none" }} />;
@@ -889,6 +899,22 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
           <div className="ov-grid2">
             <label>Border<input type="color" value={l.border || "#ffffff"} onChange={(e) => set({ border: e.target.value, borderWidth: l.borderWidth || 3 })} /></label>
             {n("borderWidth", "Border width")}
+          </div>
+          <div className="ov-grid2">
+            <label>Gradient
+              <select value={!l.gradient ? "" : l.gradient.to === "transparent" ? "fade" : "color"} onChange={(e) => set({ gradient: e.target.value === "fade" ? { to: "transparent", dir: l.gradient?.dir } : e.target.value === "color" ? { to: l.gradient?.to && l.gradient.to !== "transparent" ? l.gradient.to : "#7c3aed", dir: l.gradient?.dir } : undefined })}>
+                <option value="">None (solid)</option><option value="fade">Fade out</option><option value="color">To another colour</option>
+              </select>
+            </label>
+            {l.gradient && (
+              <label>{l.gradient.to === "transparent" ? "Direction" : "To colour / direction"}
+                <div className="ov-seg" style={{ flexWrap: "nowrap" }}>
+                  {l.gradient.to !== "transparent" && <input type="color" value={l.gradient.to} onChange={(e) => set({ gradient: { ...l.gradient!, to: e.target.value } })} style={{ width: 44 }} />}
+                  <button className={(l.gradient.dir ?? "right") === "right" ? "active" : ""} onClick={() => set({ gradient: { ...l.gradient!, dir: "right" } })} title="Left to right">→</button>
+                  <button className={l.gradient.dir === "down" ? "active" : ""} onClick={() => set({ gradient: { ...l.gradient!, dir: "down" } })} title="Top to bottom">↓</button>
+                </div>
+              </label>
+            )}
           </div>
         </>
       )}

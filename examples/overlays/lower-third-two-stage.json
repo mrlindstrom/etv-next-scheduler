@@ -1,0 +1,121 @@
+{
+  "category": "Lower thirds",
+  "name": "Two-stage lower third",
+  "description": "Shows the show's name first, then swaps to the episode title and number on the same strap.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 20,
+    "showSeconds": 11
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 870,
+      "w": 1060,
+      "h": 110,
+      "color": "#1d4ed8",
+      "gradient": {
+        "to": "#7c3aed"
+      },
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 130,
+      "y": 882,
+      "w": 1000,
+      "h": 84,
+      "text": "{{show}}",
+      "size": 64,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 0,
+        "for": 5
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.25,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 130,
+      "y": 880,
+      "w": 1000,
+      "h": 44,
+      "text": "{{title}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "appear": {
+        "at": 5
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 130,
+      "y": 928,
+      "w": 1000,
+      "h": 40,
+      "text": "Season {{season}} · Episode {{episode}}",
+      "size": 28,
+      "color": "#e0e7ff",
+      "font": "Segoe UI",
+      "appear": {
+        "at": 5
+      },
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.15,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

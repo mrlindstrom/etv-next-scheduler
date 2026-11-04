@@ -1,0 +1,98 @@
+{
+  "category": "Title cards",
+  "name": "Episode card",
+  "description": "Show, then \"Season · Episode\", then the episode title — each a beat after the last.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 5,
+    "showSeconds": 9
+  },
+  "layers": [
+    {
+      "type": "text",
+      "x": 260,
+      "y": 380,
+      "w": 1400,
+      "h": 110,
+      "text": "{{show}}",
+      "size": 90,
+      "color": "#ffffff",
+      "font": "Arial Black",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "shadow": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 260,
+      "y": 500,
+      "w": 1400,
+      "h": 56,
+      "text": "Season {{season}} · Episode {{episode}}",
+      "size": 40,
+      "color": "#fbbf24",
+      "font": "Arial",
+      "align": "center",
+      "shadow": true,
+      "appear": {
+        "at": 1
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 260,
+      "y": 570,
+      "w": 1400,
+      "h": 64,
+      "text": "“{{title}}”",
+      "size": 48,
+      "color": "#ffffff",
+      "font": "Arial",
+      "align": "center",
+      "italic": true,
+      "fit": true,
+      "shadow": true,
+      "appear": {
+        "at": 2
+      },
+      "anim": {
+        "in": {
+          "type": "typewriter",
+          "duration": 1.2,
+          "delay": 0,
+          "ease": "linear"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25
+        }
+      }
+    }
+  ]
+}

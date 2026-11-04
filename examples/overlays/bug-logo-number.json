@@ -1,0 +1,34 @@
+{
+  "category": "Bugs",
+  "name": "Logo with number",
+  "description": "The channel logo with its number underneath, always on.",
+  "timing": {
+    "mode": "always"
+  },
+  "opacity": 75,
+  "layers": [
+    {
+      "type": "image",
+      "src": "channel-logo",
+      "x": 1700,
+      "y": 800,
+      "w": 140,
+      "h": 140
+    },
+    {
+      "type": "text",
+      "x": 1700,
+      "y": 940,
+      "w": 140,
+      "h": 40,
+      "text": "{{number}}",
+      "size": 32,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "outline": "#000000",
+      "outlineWidth": 3
+    }
+  ]
+}

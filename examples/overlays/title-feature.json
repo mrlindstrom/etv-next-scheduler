@@ -1,0 +1,115 @@
+{
+  "category": "Title cards",
+  "name": "Tonight's feature",
+  "description": "A film-strip band, \"Tonight's Feature\", then the movie's title and year.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 3,
+    "showSeconds": 9
+  },
+  "layers": [
+    {
+      "type": "image",
+      "src": "example:film-strip.svg",
+      "x": 0,
+      "y": 390,
+      "w": 1920,
+      "h": 300,
+      "opacity": 94,
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.3
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 448,
+      "w": 1600,
+      "h": 44,
+      "text": "TONIGHT'S FEATURE",
+      "size": 32,
+      "color": "#fbbf24",
+      "font": "Georgia",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.4
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 494,
+      "w": 1600,
+      "h": 90,
+      "text": "{{show}}",
+      "size": 76,
+      "color": "#ffffff",
+      "font": "Georgia",
+      "bold": true,
+      "align": "center",
+      "fit": true,
+      "appear": {
+        "at": 1
+      },
+      "anim": {
+        "in": {
+          "type": "zoom",
+          "duration": 0.6,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 160,
+      "y": 590,
+      "w": 1600,
+      "h": 40,
+      "text": "{{year}}",
+      "size": 30,
+      "color": "#d1d5db",
+      "font": "Georgia",
+      "italic": true,
+      "align": "center",
+      "appear": {
+        "at": 1.6
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

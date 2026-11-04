@@ -1,0 +1,82 @@
+{
+  "category": "Up next",
+  "name": "Up next — corner picture",
+  "description": "A compact top-right card: the next show's picture with the start time on a tab.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 60,
+    "showSeconds": 10
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 1460,
+      "y": 70,
+      "w": 364,
+      "h": 252,
+      "color": "#000000",
+      "radius": 14,
+      "opacity": 75,
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "delay": 0,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5,
+          "delay": 0.1
+        }
+      }
+    },
+    {
+      "type": "image",
+      "src": "match:{{next_show}}",
+      "x": 1474,
+      "y": 84,
+      "w": 336,
+      "h": 189,
+      "fallback": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "fly_right",
+          "duration": 0.6,
+          "delay": 0.08,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fly_right",
+          "duration": 0.5,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 1474,
+      "y": 278,
+      "w": 336,
+      "h": 36,
+      "text": "NEXT · {{next_start_time}}",
+      "size": 26,
+      "color": "#fde047",
+      "font": "Arial",
+      "bold": true,
+      "align": "center",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4,
+          "delay": 0.5
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.3,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}

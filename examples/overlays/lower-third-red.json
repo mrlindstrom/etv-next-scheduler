@@ -1,0 +1,108 @@
+{
+  "category": "Lower thirds",
+  "name": "Red network strap",
+  "description": "A bold red strap with a white name tab, network-news style.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 40,
+    "showSeconds": 9
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 96,
+      "y": 880,
+      "w": 1180,
+      "h": 80,
+      "color": "#991b1b",
+      "gradient": {
+        "to": "#ef4444"
+      },
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.25
+        }
+      }
+    },
+    {
+      "type": "box",
+      "x": 96,
+      "y": 830,
+      "w": 560,
+      "h": 56,
+      "color": "#ffffff",
+      "anim": {
+        "in": {
+          "type": "wipe_left",
+          "duration": 0.5,
+          "delay": 0.15
+        },
+        "out": {
+          "type": "wipe_left",
+          "duration": 0.4,
+          "delay": 0.15
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 116,
+      "y": 836,
+      "w": 520,
+      "h": 44,
+      "text": "{{show}}",
+      "size": 34,
+      "color": "#991b1b",
+      "font": "Arial Black",
+      "bold": true,
+      "upper": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_up",
+          "duration": 0.45,
+          "delay": 0.3,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.25,
+          "delay": 0
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 116,
+      "y": 892,
+      "w": 1140,
+      "h": 56,
+      "text": "{{title}}",
+      "size": 40,
+      "color": "#ffffff",
+      "font": "Arial",
+      "bold": true,
+      "fit": true,
+      "anim": {
+        "in": {
+          "type": "slide_left",
+          "duration": 0.45,
+          "delay": 0.4,
+          "ease": "snappy"
+        },
+        "out": {
+          "type": "slide_left",
+          "duration": 0.35,
+          "delay": 0
+        }
+      }
+    }
+  ]
+}
