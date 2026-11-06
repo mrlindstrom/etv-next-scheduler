@@ -27,6 +27,9 @@ import { upcoming } from "./graphics.js";
 import { loadTheme } from "./upnext-themes.js";
 import { itemDetail } from "./library-browse.js";
 import { getResolver } from "./resolverCache.js";
+/** Library details for a file (legacy graphics elements' MediaItem_* and its picture's shape). */
+const itemInfo = (p: string) => { try { return (getResolver(libDbForInfo()) as any).templateData?.(p) ?? null; } catch { return null; } };
+let libDbForInfo = () => "";
 import { upNextItem, type UpNextOptions } from "../engine.js";
 import { applyLanguageTracks } from "../lang.js";
 import { applyOverlays, UPCOMING_FIELDS } from "../overlays.js";
@@ -139,6 +142,7 @@ export interface TestRun {
 }
 
 export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: ConfigStore; root: string; libDb: () => string; disabled: () => Iterable<number>; nextRunner?: NextRunner }): void {
+  libDbForInfo = ctx.libDb;
   const { store, root } = ctx;
   const nc = () => store.getNextConfig();
   const runtimeDir = () => absUnder(root, nc().runtimeDir);
@@ -444,7 +448,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         const guide = [{ startMs: s0, stopMs: s1, item: { id: "0", path: path ?? "", durationMs: s1 - s0, chapters: [], title: "", showTitle: cur?.title ?? "" } as any },
           ...later.map((n, k) => ({ startMs: n.epochMs, stopMs: (later[k + 1]?.epochMs ?? n.epochMs + 1800_000), item: { id: String(k + 1), path: "", durationMs: 1800_000, chapters: [], title: "", showTitle: n.title } as any }))];
         const probe: PlayoutItem = { id: "2", start: src.start, finish: src.finish, source: src.source };
-        const r = await applyOverlays([probe], new Map([["2", ["__preview"]]]), {}, guide, tz, { ...overlayOptionsFor(store, String(req.channel), root), library: [preview as any] });
+        const r = await applyOverlays([probe], new Map([["2", ["__preview"]]]), {}, guide, tz, { ...overlayOptionsFor(store, String(req.channel), root), library: [preview as any] }, undefined, itemInfo);
         if (!probe.graphics?.length) throw new Error(`The overlay couldn't be drawn${r.problems.length ? `: ${r.problems.join("; ")}` : ""}.`);
         src.graphics = [...probe.graphics, ...(src.graphics ?? [])];
         overlayNote = `previewing "${o.name}"`;
@@ -478,7 +482,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       if (meta && req.overlays !== false && (meta.overlays ?? []).length) {
         const probe: PlayoutItem = { id: "2", start: formatRfc3339(0, tz), finish: formatRfc3339(d.durationMs, tz), source: { source_type: "local", path } };
         const item = { id: String(d.id), path, durationMs: d.durationMs, chapters: [], title: d.title, showTitle: d.showTitle, season: d.season, episodeNumber: d.episode, year: d.year ?? undefined, kind: d.type } as any;
-        const r = await applyOverlays([probe], new Map([["2", meta.overlays]]), {}, [{ startMs: 0, stopMs: d.durationMs, item }], tz, overlayOptionsFor(store, meta.name, root));
+        const r = await applyOverlays([probe], new Map([["2", meta.overlays]]), {}, [{ startMs: 0, stopMs: d.durationMs, item }], tz, overlayOptionsFor(store, meta.name, root), undefined, itemInfo);
         overlayLayers = probe.graphics ?? [];
         if (r.problems.length) overlayNote = `Overlays: ${r.problems.join("; ")}`;
       }

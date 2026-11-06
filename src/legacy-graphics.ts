@@ -19,7 +19,7 @@
 //      timed layer per stretch it's visible.
 // Subtitle and script elements aren't supported yet (reported, not drawn).
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, utimesSync } from "node:fs";
+import { existsSync, readFileSync, utimesSync, statSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join, dirname, basename, extname } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -375,8 +375,29 @@ export async function legacyLayers(el: LegacyElement, ctx: LegacyContext, deps: 
     // entirely off the frame (e.g. a pillar beside a picture that fills it): legacy drew nothing
     if (pos.x >= W || pos.y >= H || pos.x + w <= 0 || pos.y + h <= 0) return [];
     const pct = (n: number, of: number) => Math.round((n / of) * 100_000) / 1000;
-    const exact = { location: "top_left" as const, horizontal_margin_percent: pct(Math.max(0, pos.x), W), vertical_margin_percent: pct(Math.max(0, pos.y), H), width_percent: pct(w, W) };
-    return shown.map((s) => ({ z, layer: { kind: "media", source, ...exact, ...withOpacity(s) } as GraphicsLayer }));
+    // the part of it inside the frame (what legacy showed): next can't overlay past the
+    // frame's edge on every encoder (Quick Sync fails the whole item), so an image that
+    // runs off the frame — e.g. a 1920-tall pillar centred in a 1080 frame — is cropped
+    // here to its visible part (cached) and placed inside the frame
+    const vx = Math.max(0, pos.x), vy = Math.max(0, pos.y), vw = Math.min(W, pos.x + w) - vx, vh = Math.min(H, pos.y + h) - vy;
+    let src2: typeof source = source;
+    if (vw !== w || vh !== h) {
+      if (isUrl(src)) deps.problems.push(`image ${src} runs off the frame; web images can't be cropped, so it's moved inside it`);
+      else {
+        let mtime = 0;
+        try { mtime = statSync(src).mtimeMs; } catch { /* gone */ }
+        const file = join(deps.cacheDir, `${createHash("sha1").update(`${src}|${mtime}|${w}x${h}|${vx - pos.x},${vy - pos.y},${vw}x${vh}`).digest("hex")}.png`);
+        if (existsSync(file)) { try { const now = new Date(); utimesSync(file, now, now); } catch { /* ignore */ } }
+        else {
+          const mime = /\.png$/i.test(src) ? "image/png" : /\.gif$/i.test(src) ? "image/gif" : /\.webp$/i.test(src) ? "image/webp" : /\.svg$/i.test(src) ? "image/svg+xml" : "image/jpeg";
+          const png = await rasterize(`<svg xmlns="http://www.w3.org/2000/svg" width="${vw}" height="${vh}"><image x="${pos.x - vx}" y="${pos.y - vy}" width="${w}" height="${h}" preserveAspectRatio="none" href="data:${mime};base64,${readFileSync(src).toString("base64")}"/></svg>`);
+          if (png) await writeFile(file, png);
+        }
+        if (existsSync(file)) src2 = { source_type: "local", path: file };
+      }
+    }
+    const exact = { location: "top_left" as const, horizontal_margin_percent: pct(vx, W), vertical_margin_percent: pct(vy, H), width_percent: pct(src2 === source ? w : vw, W) };
+    return shown.map((s) => ({ z, layer: { kind: "media", source: src2, ...exact, ...withOpacity(s) } as GraphicsLayer }));
   }
   if (el.kind === "motion") {
     const src = String(def.video_path ?? "").trim();
