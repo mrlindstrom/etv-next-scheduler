@@ -41,7 +41,7 @@ export interface LegacyElement { kind: LegacyKind; yaml: string; file?: string }
 export interface LegacyItemData {
   title?: string; plot?: string; releaseDateMs?: number | null; studios?: string[]; directors?: string[]; genres?: string[]; contentRating?: string;
   showTitle?: string; showYear?: number | null; showContentRating?: string; showGenres?: string[];
-  durationMs?: number; width?: number; height?: number; track?: number | null; album?: string; artist?: string; artists?: string[]; year?: number | null;
+  durationMs?: number; width?: number; height?: number; dar?: number | null; track?: number | null; album?: string; artist?: string; artists?: string[]; year?: number | null;
 }
 
 /** What one item looks like to a legacy element. */
@@ -351,9 +351,32 @@ export async function legacyLayers(el: LegacyElement, ctx: LegacyContext, deps: 
     if (!src) { deps.problems.push("an image element without an image"); return []; }
     if (!isUrl(src) && !existsSync(src)) { deps.problems.push(`image ${src} isn't on this machine`); return []; }
     const source = isUrl(src) ? { source_type: "http" as const, uri: src } : { source_type: "local" as const, path: src };
-    const scaled = yes(def.scale) ? { width_percent: numOr(def.scale_width_percent, 100) } : {};
-    const within = yes(def.place_within_source_content) ? { within_source_content: true } : {};
-    return shown.map((s) => ({ z, layer: { kind: "media", source, ...place, ...scaled, ...within, ...withOpacity(s) } as GraphicsLayer }));
+    // legacy's exact spot in output pixels (CalculateBounds): its size — scaled to a share of
+    // the frame width, or its own pixels — and margins from the frame, or (within the source
+    // content) from the item's picture as fitted into the frame. Handed to next as a top-left
+    // position and width, so next places it the same whatever it does with margins itself.
+    const size = isUrl(src) ? null : imageSize(src);
+    if (!size) {
+      const scaled = yes(def.scale) ? { width_percent: numOr(def.scale_width_percent, 100) } : {};
+      const within = yes(def.place_within_source_content) ? { within_source_content: true } : {};
+      return shown.map((s) => ({ z, layer: { kind: "media", source, ...place, ...scaled, ...within, ...withOpacity(s) } as GraphicsLayer }));
+    }
+    const w = yes(def.scale) ? Math.round((numOr(def.scale_width_percent, 100) / 100) * W) : size.w;
+    const h = yes(def.scale) ? Math.floor(w * (size.h / size.w)) : size.h;
+    const hp = numOr(def.horizontal_margin_percent, 0), vp = numOr(def.vertical_margin_percent, 0);
+    let hm = Math.round((hp / 100) * W), vm = Math.round((vp / 100) * H);
+    if (yes(def.place_within_source_content)) {
+      const dar = ctx.info(ctx.path)?.dar || W / H;
+      const cw = dar >= W / H ? W : Math.round(H * dar), chh = dar >= W / H ? Math.round(W / dar) : H;
+      hm = Math.round((hp / 100) * cw + (W - cw) / 2);
+      vm = Math.round((vp / 100) * chh + (H - chh) / 2);
+    }
+    const pos = legacyPosition(loc.key, W, H, w, h, hm, vm);
+    // entirely off the frame (e.g. a pillar beside a picture that fills it): legacy drew nothing
+    if (pos.x >= W || pos.y >= H || pos.x + w <= 0 || pos.y + h <= 0) return [];
+    const pct = (n: number, of: number) => Math.round((n / of) * 100_000) / 1000;
+    const exact = { location: "top_left" as const, horizontal_margin_percent: pct(Math.max(0, pos.x), W), vertical_margin_percent: pct(Math.max(0, pos.y), H), width_percent: pct(w, W) };
+    return shown.map((s) => ({ z, layer: { kind: "media", source, ...exact, ...withOpacity(s) } as GraphicsLayer }));
   }
   if (el.kind === "motion") {
     const src = String(def.video_path ?? "").trim();

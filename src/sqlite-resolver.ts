@@ -1046,12 +1046,15 @@ export class SqliteResolver implements ContentResolver {
   templateData(path: string): import("./legacy-graphics.js").LegacyItemData | null {
     const q1 = (sql: string, ...a: (string | number)[]): any => { try { return this.db.prepare(sql).get(...a); } catch { return undefined; } };
     const qa = (sql: string, ...a: (string | number)[]): any[] => { try { return this.db.prepare(sql).all(...a) as any[]; } catch { return []; } };
-    const mv = q1(`SELECT mv.Id, mv.EpisodeId, mv.MovieId, mv.OtherVideoId, mv.MusicVideoId, mv.Width, mv.Height, mv.Duration FROM MediaFile mf JOIN MediaVersion mv ON mv.Id = mf.MediaVersionId WHERE mf.Path = ? LIMIT 1`, path);
+    const mv = q1(`SELECT mv.Id, mv.EpisodeId, mv.MovieId, mv.OtherVideoId, mv.MusicVideoId, mv.Width, mv.Height, mv.Duration, mv.DisplayAspectRatio, mv.SampleAspectRatio FROM MediaFile mf JOIN MediaVersion mv ON mv.Id = mf.MediaVersionId WHERE mf.Path = ? LIMIT 1`, path);
     if (!mv) return null;
     const names = (table: string, col: string, id: number) => qa(`SELECT Name FROM ${table} WHERE ${col} = ? ORDER BY Name`, id).map((r) => String(r.Name ?? "")).filter(Boolean);
     const ms = (v: unknown) => { if (v == null || v === "") return null; const t = Date.parse(String(v)); return Number.isFinite(t) ? t : null; };
     const durMs = (() => { const s = String(mv.Duration ?? ""); const m = /^(?:(\d+)\.)?(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(s); return m ? ((+(m[1] ?? 0) * 24 + +m[2]) * 60 + +m[3]) * 60_000 + +m[4] * 1000 : Number(s) || 0; })();
-    const out: import("./legacy-graphics.js").LegacyItemData = { width: mv.Width ?? 0, height: mv.Height ?? 0, durationMs: durMs };
+    // the shape it's shown at: its display aspect ratio ("4:3"), else its pixels x sample aspect
+    const ratio = (v: unknown) => { const m = /^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/.exec(String(v ?? "")); return m && +m[2] > 0 && +m[1] > 0 ? +m[1] / +m[2] : null; };
+    const dar = ratio(mv.DisplayAspectRatio) ?? (mv.Width && mv.Height ? (mv.Width / mv.Height) * (ratio(mv.SampleAspectRatio) ?? 1) : null);
+    const out: import("./legacy-graphics.js").LegacyItemData = { width: mv.Width ?? 0, height: mv.Height ?? 0, durationMs: durMs, dar };
     const fill = (md: any, kind: string) => {
       if (!md) return;
       Object.assign(out, { title: md.Title ?? "", plot: md.Plot ?? "", releaseDateMs: ms(md.ReleaseDate), year: md.Year ?? null, contentRating: md.ContentRating ?? "",
