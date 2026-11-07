@@ -920,7 +920,10 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     let png = livePngs.get(key);
     if (!png) {
       const o = store.getOverlay(String(q.o ?? "")) as Overlay | null;
-      const W = Math.max(16, Math.min(7680, Number(q.w) || 1920)), H = Math.max(16, Math.min(4320, Number(q.h) || 1080));
+      const W = Math.max(2, Math.min(7680, Number(q.w) || 1920)), H = Math.max(2, Math.min(4320, Number(q.h) || 1080));
+      // b = the part of the artboard to draw (an overlay placed inside the picture); else all of it
+      const b = String(q.b ?? "").split(",").map(Number);
+      const view = b.length === 4 && b.every(Number.isFinite) && b[2] > 0 && b[3] > 0 ? { x: b[0], y: b[1], w: b[2], h: b[3] } : { x: 0, y: 0, w: 1920, h: 1080 };
       let vars: Record<string, string> = {};
       try { vars = JSON.parse(Buffer.from(String(q.d ?? ""), "base64url").toString("utf8")) ?? {}; } catch { /* none */ }
       const idx = String(q.l ?? "").split(",").map(Number).filter((n) => Number.isInteger(n) && n >= 0);
@@ -929,7 +932,7 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
       await loadRasterizer();
       const s = overlaySvg({ ...(o ?? { id: "", name: "", timing: { mode: "always" } }), layers } as Overlay, vars, (src) => {
         try { const p = assetPath(src, oo.assetsDir, oo.channelLogo); if (!p) return null; return { data: readFileSync(p).toString("base64"), mime: logoContentType(p) }; } catch { return null; }
-      }, { view: { x: 0, y: 0, w: 1920, h: 1080 }, px: { w: W, h: H } });
+      }, { view, px: { w: W, h: H } });
       png = (s && (await rasterize(s.svg))) || (await rasterize(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"/>`)) || Buffer.alloc(0);
       if (livePngs.size > 400) livePngs.delete(livePngs.keys().next().value!);
       livePngs.set(key, png);
@@ -937,8 +940,11 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     reply.header("content-type", "image/png").header("cache-control", "public, max-age=600");
     return reply.send(png);
   });
-  // a changed overlay draws afresh live (its addresses stay the same)
-  app.addHook("onResponse", async (req) => { if (req.url.startsWith("/api/overlays") && req.method !== "GET") livePngs.clear(); });
+  // a changed overlay or channel logo draws afresh live (the addresses stay the same)
+  app.addHook("onResponse", async (req) => {
+    if (req.method === "GET") return;
+    if (req.url.startsWith("/api/overlays") || /^\/api\/channels\/[^/?]+\/(logo|meta)\b/.test(req.url)) livePngs.clear();
+  });
   const examplesDir = overlayExamplesDir(ROOT); // also where example: image sources resolve
   // ready-made overlays that ship with the scheduler (examples/overlays/*.json)
   app.get("/api/overlays/examples", async () => {

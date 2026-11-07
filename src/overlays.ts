@@ -707,12 +707,18 @@ function liveLayers(o: Overlay, v: OverlayVars, base: PeriodicTiming, opts: Over
   let run: { idx: number[]; timing: ReturnType<typeof timingFor> & object; key: string } | null = null;
   const flush = () => {
     if (!run) return;
-    const q = new URLSearchParams({ o: o.liveId ?? o.id, l: run.idx.join(","), w: String(W), h: String(H),
+    // inside the picture: next places a layer by percentages of the picture, so a
+    // full-frame PNG would be shifted (off-screen on a pillarboxed show), not scaled.
+    // Draw just the layers' box instead and place that.
+    const box = o.withinContent ? stillBox(run.idx.map((i) => o.layers[i])) : null;
+    const pw = box ? Math.max(2, Math.round((box.w * W) / ARTBOARD.w)) : W, ph = box ? Math.max(2, Math.round((box.h * H) / ARTBOARD.h)) : H;
+    const q = new URLSearchParams({ o: o.liveId ?? o.id, l: run.idx.join(","), w: String(pw), h: String(ph),
+      ...(box ? { b: [box.x, box.y, box.w, box.h].join(",") } : {}),
       ...(opts.channelName ? { c: opts.channelName } : {}),
       d: Buffer.from(JSON.stringify(usedVars(run.idx.map((i) => o.layers[i]), v))).toString("base64url") });
-    out.push({ kind: "media", location: "top_left",
+    out.push({ kind: "media", location: "top_left", ...(box ? placement(box) : {}),
       source: { source_type: "http", uri: `${opts.liveBase!.replace(/\/+$/, "")}/graphics/overlay.png?${q}`, reconnect: true,
-        probe_hint: { format_name: "png_pipe", video: [{ stream_index: 0, codec: "png", width: W, height: H, pix_fmt: "rgba" }] } },
+        probe_hint: { format_name: "png_pipe", video: [{ stream_index: 0, codec: "png", width: pw, height: ph, pix_fmt: "rgba" }] } },
       timing: run.timing, ...common } as GraphicsLayer);
     run = null;
   };

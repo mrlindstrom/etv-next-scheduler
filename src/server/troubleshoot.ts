@@ -393,6 +393,18 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
 
   const publicRun = (r: TestRun) => ({ ...r, log: r.log.slice(-200) });
 
+  /** A test plays its item now, not when it was scheduled: move wall-clock graphics
+   *  ("every N minutes") by the same amount, so they keep their place in the show. */
+  function keepWallPlace(it: PlayoutItem, movedMs: number): PlayoutItem {
+    for (const g of it.graphics ?? []) {
+      const tm = g.timing;
+      if (tm?.clock !== "wall" || !(tm.frequency_ms > 0)) continue;
+      const f = tm.frequency_ms;
+      tm.phase_offset_ms = Math.round(((((tm.phase_offset_ms ?? 0) + movedMs) % f) + f) % f);
+    }
+    return it;
+  }
+
   async function startTest(req: TestRequest): Promise<TestRun> {
     const cfg = nc();
     if (!existsSync(nextBinary())) throw new Error(`ErsatzTV next wasn't found at ${nextBinary()}. Set its path on the Streaming page.`);
@@ -453,7 +465,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         src.graphics = [...probe.graphics, ...(src.graphics ?? [])];
         overlayNote = `previewing "${o.name}"`;
       }
-      mkItem = (t) => ({ ...clone(src), id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + lenSec * 1000, tz) });
+      mkItem = (t) => keepWallPlace({ ...clone(src), id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + lenSec * 1000, tz) }, t - Date.parse(src.start));
       label = `${req.channel} · ${path ? basename(path).replace(/\.[^.]+$/, "") : "item"}${overlayNote ? ` · ${overlayNote}` : ""}`;
       sourcePath = path;
     } else if (req.kind === "guide") {
@@ -488,7 +500,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
       }
       mkItem = (t) => {
         const it: PlayoutItem = { id: "2", start: formatRfc3339(t, tz), finish: formatRfc3339(t + d.durationMs, tz), source: { source_type: "local", path } };
-        if (overlayLayers.length) it.graphics = clone(overlayLayers);
+        if (overlayLayers.length) { it.graphics = clone(overlayLayers); keepWallPlace(it, t); } // worked out against a start of 0
         if (meta) {
           const r = getResolver(ctx.libDb()); r.setDisabledLibraries(ctx.disabled());
           applyLanguageTracks({ version: "", items: [it] } as any, r, { audio: meta.audioLang, subtitles: meta.subtitles });
