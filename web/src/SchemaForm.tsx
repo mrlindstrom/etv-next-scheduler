@@ -99,15 +99,31 @@ function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { ty
   const display = new Map<string, string>(); // lower-case -> as written
   for (const c of res?.combos ?? []) for (const t of c.tags) if (!display.has(t.toLowerCase())) display.set(t.toLowerCase(), t);
   const countOf = (path: string[]) => combos.reduce((n, c) => (path.every((t) => c.set.has(t)) ? n + c.count : n), 0);
-  // the tags under a path: those on some (not all) of the items the path matches
-  const childrenOf = (path: string[]): { tag: string; count: number }[] => {
+  // The tags under a path, among the items it matches (a tag on all of them narrows
+  // nothing, so it's left out). B sits inside A when nearly every item with B also has
+  // A (95%, so a stray mis-tagged item doesn't break the nesting); only the outermost
+  // are listed, the rest are a level further down. `inside`: tags (nearly) all of whose
+  // items are in this path — at the top level that's every tag, so the top shows the
+  // roots. `also`: tags on only some of these items (Christmas under Commercial).
+  const NEST = 0.95;
+  const childrenOf = (path: string[]): { inside: { tag: string; count: number }[]; also: { tag: string; count: number }[] } => {
     const total = countOf(path);
-    const by = new Map<string, number>();
+    const by = new Map<string, number>(), pair = new Map<string, number>();
     for (const c of combos) {
       if (!path.every((t) => c.set.has(t))) continue;
-      for (const t of c.set) if (!path.includes(t)) by.set(t, (by.get(t) ?? 0) + c.count);
+      const here = [...c.set].filter((t) => !path.includes(t));
+      for (const a of here) { by.set(a, (by.get(a) ?? 0) + c.count); for (const b of here) if (a !== b) pair.set(`${a}\u0001${b}`, (pair.get(`${a}\u0001${b}`) ?? 0) + c.count); }
     }
-    return [...by].filter(([, n]) => n < total).map(([t, n]) => ({ tag: t, count: n })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+    const cand = [...by].filter(([, n]) => n < total).map(([t, n]) => ({ tag: t, count: n }));
+    const nested = (b: { tag: string; count: number }, among: { tag: string; count: number }[]) =>
+      among.some((a) => a.tag !== b.tag && (a.count > b.count || (a.count === b.count && a.tag < b.tag)) && (pair.get(`${a.tag}\u0001${b.tag}`) ?? 0) >= NEST * b.count);
+    const sort = (l: { tag: string; count: number }[]) => l.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+    const insideAll = cand.filter((t) => t.count >= NEST * countOf([t.tag]));
+    const inside = insideAll.filter((t) => !nested(t, insideAll));
+    const insideSet = new Set(insideAll.map((t) => t.tag));
+    const rest = cand.filter((t) => !insideSet.has(t.tag));
+    const also = rest.filter((t) => !nested(t, rest));
+    return { inside: sort(inside), also: sort(also) };
   };
 
   const rules = value.map(ruleOf).filter((r) => r.length);
@@ -126,20 +142,35 @@ function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { ty
   const q = filter.trim().toLowerCase();
   const Node = ({ path, tag, count, depth }: { path: string[]; tag: string; count: number; depth: number }) => {
     const id = pathId(path);
-    const isOpen = openPaths.has(id) || (!!q && depth > 0);
-    const kids = isOpen ? childrenOf(path) : null;
-    const canOpen = depth < 5 && (kids ? kids.length > 0 : childrenOf(path).length > 0);
+    const isOpen = openPaths.has(id);
+    const kids = depth < 5 ? childrenOf(path) : { inside: [], also: [] };
+    const canOpen = kids.inside.length + kids.also.length > 0;
+    const alsoId = [...path, "\u0002also"];
+    const alsoOpen = openPaths.has(pathId(alsoId));
     return (
       <div>
         <div className="tag-node" style={{ paddingLeft: depth * 18 }}>
           <button type="button" className="tag-twisty" onClick={() => flip(path)} disabled={!canOpen} aria-label={isOpen ? "Close" : "Open"} title={canOpen ? (isOpen ? "Hide narrower tags" : "Narrow it further") : "Nothing narrower"}>{canOpen ? (isOpen ? "▾" : "▸") : ""}</button>
           <label className="switch"><input type="checkbox" checked={ticked.has(ruleKey(path))} onChange={() => toggle(path)} /> {display.get(tag) ?? tag} <span className="muted" style={{ fontSize: 11 }}>({count.toLocaleString()})</span></label>
         </div>
-        {isOpen && kids?.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 1} />)}
+        {isOpen && kids.inside.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 1} />)}
+        {isOpen && kids.also.length > 0 && (
+          <div>
+            <div className="tag-node" style={{ paddingLeft: (depth + 1) * 18 }}>
+              <button type="button" className="tag-twisty" onClick={() => flip(alsoId)} aria-label={alsoOpen ? "Close" : "Open"}>{alsoOpen ? "▾" : "▸"}</button>
+              <a className="muted" style={{ fontSize: 12 }} onClick={() => flip(alsoId)} title={`Tags that are on only some of the ${display.get(tag) ?? tag} items, to combine with it`}>
+                Also on some of these <span style={{ fontSize: 11 }}>({kids.also.length} tag{kids.also.length === 1 ? "" : "s"})</span>
+              </a>
+            </div>
+            {alsoOpen && kids.also.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 2} />)}
+          </div>
+        )}
       </div>
     );
   };
-  const roots = res ? childrenOf([]).filter((t) => !q || t.tag.includes(q)) : [];
+  // the roots; a filter searches every tag instead (nested ones too), listed on their own
+  const allTags = res ? [...display.keys()].map((t) => ({ tag: t, count: countOf([t]) })).filter((t) => t.count < res.items).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)) : [];
+  const roots = !res ? [] : q ? allTags.filter((t) => t.tag.includes(q)) : childrenOf([]).inside;
 
   return (
     <div className="lib-field">
