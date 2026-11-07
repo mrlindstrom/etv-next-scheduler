@@ -33,7 +33,9 @@ export interface ContentDef {
   expand?: boolean;                             // expand show/season groups to episodes (default true; false = members as-is for browsing)
   peek?: string;                                // resolve ${next_show_title} from this content key's upcoming item
   matchEra?: boolean;                           // filler: prefer items from the airing program's era (year ±5)
-  tags?: (string | string[])[];                 // keep only items matching a rule: a tag, or a path of tags all on the item (any case)
+  // keep only items matching a rule: a folder of the library ({ library, folder: "Commercials/Food" },
+  // that folder and below), a tag, or a path of tags all on the item (any case)
+  tags?: (string | string[] | { library?: string; folder: string })[];
   rotation?: { size: number };                  // monthly rotation: each calendar month plays a fresh set of `size` titles
   raw: Record<string, any>;                     // original entry (for less-common fields)
 }

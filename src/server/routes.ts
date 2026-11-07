@@ -495,7 +495,15 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     } else if (libs.length) {
       items = await r.resolveContent({ key: "tags", kind: "search", order: "chronological", query: `library_name:(${libs.map((l) => `"${l.replace(/"/g, "")}"`).join(" OR ")})`, raw: {} } as any);
     }
-    return { items: items.length, tags: tagCounts(items), combos: tagCombos(items) };
+    // items per folder (relative to each library's root), for the folder tree
+    const per = new Map<string, { library: string; dir: string; count: number }>();
+    for (const m of items) {
+      const f = r.folderOf(m.path);
+      if (!f) continue;
+      const k = `${f.library}\u0001${f.dir}`;
+      const e = per.get(k); if (e) e.count++; else per.set(k, { ...f, count: 1 });
+    }
+    return { items: items.length, tags: tagCounts(items), combos: tagCombos(items), folders: [...per.values()] };
   });
   // what uses a collection: channels (by name) and multi-collections / playlists in the library
   app.get("/api/collections/:type/:id/usage", async (req) => {

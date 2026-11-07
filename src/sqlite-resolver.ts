@@ -59,6 +59,10 @@ function langName(code?: string): string | undefined { const c = (code ?? "").to
 
 /** A tag rule: one tag, or a path of tags that must all be on the item. */
 export type TagRule = string | string[];
+/** A folder rule: everything in this folder (relative to the library's root, "/"-separated) and below it. */
+export interface FolderRule { library?: string; folder: string }
+export type FillerRule = TagRule | FolderRule;
+export const isFolderRule = (r: unknown): r is FolderRule => !!r && typeof r === "object" && !Array.isArray(r) && typeof (r as any).folder === "string";
 /** Rules as lower-cased tag sets (blank tags and empty rules dropped). */
 export function normalizeTagRules(rules: TagRule[]): string[][] {
   return rules.map((r) => (Array.isArray(r) ? r : [r]).map((t) => String(t ?? "").trim().toLowerCase()).filter(Boolean)).filter((r) => r.length);
@@ -783,7 +787,42 @@ export class SqliteResolver implements ContentResolver {
       default: rows = [];
     }
     const items = this.finishRows(rows, def.expand !== false, def.includeSpecials);
-    return def.tags?.length ? filterByTags(items, def.tags) : items;
+    return def.tags?.length ? this.filterByRules(items, def.tags) : items;
+  }
+
+  // ---- filler rules: folders (relative to the library's root) or tags ----
+  private libRoots?: { root: string; library: string }[];
+  /** The library an item's file sits in and its folder inside it ("Commercials/Food"; "" = the library's root). */
+  folderOf(path: string): { library: string; dir: string } | null {
+    if (!this.libRoots) {
+      let rows: any[] = [];
+      try { rows = this.db.prepare(`SELECT lp.Path p, l.Name n FROM LibraryPath lp JOIN Library l ON l.Id = lp.LibraryId`).all() as any[]; } catch { /* no table */ }
+      this.libRoots = rows.filter((r) => r.p).map((r) => ({ root: String(r.p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase() + "/", library: r.n ?? "" }))
+        .sort((a, b) => b.root.length - a.root.length);
+    }
+    const norm = (path ?? "").replace(/\\/g, "/");
+    const lower = norm.toLowerCase();
+    const hit = this.libRoots.find((r) => lower.startsWith(r.root));
+    if (!hit) return null;
+    const rel = norm.slice(hit.root.length);
+    const cut = rel.lastIndexOf("/");
+    return { library: hit.library, dir: cut < 0 ? "" : rel.slice(0, cut) };
+  }
+  /** Items matching any rule: a folder rule takes everything in that folder and below
+   *  it; a tag rule needs every one of its tags on the item. */
+  filterByRules(items: MediaItem[], rules: FillerRule[]): MediaItem[] {
+    const folders = rules.filter(isFolderRule).map((r) => ({ library: (r.library ?? "").toLowerCase(), dir: r.folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase() })).filter((r) => r.dir);
+    const tagRules = rules.filter((r) => !isFolderRule(r)) as TagRule[];
+    const tagged = tagRules.length ? new Set(filterByTags(items, tagRules)) : null;
+    if (!folders.length && !tagged) return items;
+    return items.filter((m) => {
+      if (tagged?.has(m)) return true;
+      if (!folders.length) return false;
+      const f = this.folderOf(m.path);
+      if (!f) return false;
+      const dir = f.dir.toLowerCase(), lib = f.library.toLowerCase();
+      return folders.some((r) => (!r.library || r.library === lib) && (dir === r.dir || dir.startsWith(r.dir + "/")));
+    });
   }
 
   /** Shared tail of content resolution: expand shows/seasons to episodes, drop

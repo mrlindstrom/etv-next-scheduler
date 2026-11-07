@@ -32,7 +32,7 @@ interface Block {
   preRollCount?: number;
   adCollection?: string;           // mid-roll breaks
   adCount?: number;                // items per break (instead of a target length)
-  adTags?: (string | string[])[];  // mid-roll: only filler matching a rule (a tag, or a path of tags all on the item)
+  adTags?: (string | string[] | { library?: string; folder: string })[];  // mid-roll: only filler matching a rule (a tag, or a path of tags all on the item)
   padCollection?: string;          // clock-alignment padding (legacy post-roll "pad")
   fallbackCollection?: string;     // fills whatever the padding couldn't
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
@@ -179,8 +179,8 @@ const SCHEMA: Field[] = [
       { type: "number", key: "adTarget", label: "Break length (minutes)", default: 2, min: 1 },
       { type: "collection", key: "adCollection", label: "Mid-roll filler collection (optional)", help: "Fill breaks from this collection instead of the filler libraries." },
       { type: "number", key: "adCount", label: "Items per break (collection; blank = fill to break length)", min: 1 },
-      { type: "tags", key: "adTags", label: "Only mid-roll filler with these tags (optional)", libraries: "fillerLibraries", collection: "adCollection", showIf: { key: "ads", equals: true as any },
-        help: "Open a tag to narrow it: ticking Commercial › Food › Fast Food plays only items with all three; tick several and breaks mix them. Nothing ticked = any filler. Clock-alignment padding still uses all of it." },
+      { type: "tags", key: "adTags", label: "Only mid-roll filler from these folders (optional)", libraries: "fillerLibraries", collection: "adCollection", showIf: { key: "ads", equals: true as any },
+        help: "The filler's folders, as they are on disk. Tick a folder to play only what's in it (and below it), e.g. Commercials › Food › Fast Food; tick several and breaks mix them. Nothing ticked = any filler. Clock-alignment padding still uses all of it." },
       { type: "collection", key: "preRoll", label: "Pre-roll collection (optional)", help: "Play items from this collection before each program." },
       { type: "number", key: "preRollCount", label: "Pre-roll items", default: 1, min: 1 },
       { type: "collection", key: "padCollection", label: "Clock-alignment filler collection (optional)", help: "Pad to the clock barrier from this collection instead of the filler libraries (legacy post-roll pad)." },

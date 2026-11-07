@@ -18,7 +18,7 @@ interface MoviesConfig extends StationOptions {
   fillerLibraries?: string[];       // trailers / shorts between movies
   fillerCollection?: string;
   ads?: boolean;                    // commercial breaks during movies (premium channels: off)
-  adTags?: (string | string[])[];   // breaks: only filler matching a rule (a tag, or a path of tags all on the item)
+  adTags?: (string | string[] | { library?: string; folder: string })[];   // breaks: only filler matching a rule (a tag, or a path of tags all on the item)
   adBreaks?: number;                // breaks per half hour of movie
   themes?: Theme[];
 }
@@ -106,8 +106,8 @@ const SCHEMA: Field[] = [
   { type: "collection", key: "fillerCollection", label: "Or a filler collection (overrides the libraries)" },
   { type: "checkbox", key: "ads", label: "Commercial breaks during movies (premium channels run none)" },
   { type: "number", key: "adBreaks", label: "Breaks per half hour of movie", default: 1, min: 1, showIf: { key: "ads", equals: true as any } },
-  { type: "tags", key: "adTags", label: "Only break filler with these tags (optional)", libraries: "fillerLibraries", collection: "fillerCollection", showIf: { key: "ads", equals: true as any },
-    help: "Open a tag to narrow it: ticking Commercial › Food › Fast Food plays only items with all three; tick several and breaks mix them. Nothing ticked = any filler. The gaps between movies still use all of it." },
+  { type: "tags", key: "adTags", label: "Only break filler from these folders (optional)", libraries: "fillerLibraries", collection: "fillerCollection", showIf: { key: "ads", equals: true as any },
+    help: "The filler's folders, as they are on disk. Tick a folder to play only what's in it (and below it), e.g. Commercials › Food › Fast Food; tick several and breaks mix them. Nothing ticked = any filler. The gaps between movies still use all of it." },
   ...STATION_FIELDS,
   {
     type: "list", key: "themes", label: "Theme nights", addLabel: "+ Add theme night", itemTitle: "title",

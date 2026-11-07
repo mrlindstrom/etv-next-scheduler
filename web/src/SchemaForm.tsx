@@ -68,24 +68,27 @@ function LibrariesField({ f, value, onChange }: { f: Extract<SchemaField, { type
   );
 }
 
-// A tree of the tags on the filler its sibling fields pick (the collection, else the
-// libraries). The top level is every tag; opening one lists the other tags found on
-// those same items, and so on. A ticked node is a rule needing every tag on its path
-// (Commercial › Food › Fast Food); several ticked rules mix. A tag that every item at
-// that level already has narrows nothing, so it isn't listed there.
-type TagSource = { items: number; tags: { tag: string; count: number }[]; combos?: { tags: string[]; count: number }[]; error?: string };
-type Combo = { set: Set<string>; count: number };
+// A tree of the filler's folders, as they are on disk (the folders at each library's
+// root first) — the filler its sibling fields pick (the collection, else the
+// libraries). Ticking a folder takes everything in it and below it; several ticked
+// folders mix. Rules saved as tags (older configs) still show and still work.
+type FolderCount = { library: string; dir: string; count: number };
+type TagSource = { items: number; tags: { tag: string; count: number }[]; combos?: { tags: string[]; count: number }[]; folders?: FolderCount[]; error?: string };
+type FolderRuleV = { library?: string; folder: string };
+type RuleV = string | string[] | FolderRuleV;
 const TAG_CACHE = new Map<string, Promise<TagSource>>();
-const ruleOf = (r: string | string[]): string[] => (Array.isArray(r) ? r : [r]).filter(Boolean);
-const ruleKey = (r: string[]) => r.map((t) => t.toLowerCase()).sort().join("\u0001");
+const isFolderV = (r: RuleV): r is FolderRuleV => !!r && typeof r === "object" && !Array.isArray(r) && typeof (r as any).folder === "string";
+const lc = (s: string) => s.toLowerCase();
+const folderKey = (library: string | undefined, dir: string) => `${lc(library ?? "")}\u0001${lc(dir)}`;
+const tagRuleOf = (r: string | string[]): string[] => (Array.isArray(r) ? r : [r]).filter(Boolean);
 
-function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "tags" }>; value: (string | string[])[]; group?: any; onChange: (v: (string | string[])[]) => void }) {
+function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "tags" }>; value: RuleV[]; group?: any; onChange: (v: RuleV[]) => void }) {
   const collection: string = (f.collection && group?.[f.collection]) || "";
   const libraries: string[] = collection ? [] : ((f.libraries && Array.isArray(group?.[f.libraries]) ? group[f.libraries] : []) as string[]).filter(Boolean);
   const src = collection ? `c:${collection}` : libraries.length ? `l:${[...libraries].sort().join("|")}` : "";
   const [res, setRes] = useState<TagSource | null>(null);
   const [filter, setFilter] = useState("");
-  const [openPaths, setOpenPaths] = useState<Set<string>>(new Set());
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!src) { setRes(null); return; }
     let live = true;
@@ -95,109 +98,113 @@ function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { ty
     return () => { live = false; };
   }, [src]);
 
-  const combos: Combo[] = (res?.combos ?? []).map((c) => ({ set: new Set(c.tags.map((t) => t.toLowerCase())), count: c.count }));
-  const display = new Map<string, string>(); // lower-case -> as written
-  for (const c of res?.combos ?? []) for (const t of c.tags) if (!display.has(t.toLowerCase())) display.set(t.toLowerCase(), t);
-  const countOf = (path: string[]) => combos.reduce((n, c) => (path.every((t) => c.set.has(t)) ? n + c.count : n), 0);
-  // The tags under a path, among the items it matches (a tag on all of them narrows
-  // nothing, so it's left out). B sits inside A when nearly every item with B also has
-  // A (95%, so a stray mis-tagged item doesn't break the nesting); only the outermost
-  // are listed, the rest are a level further down. `inside`: tags (nearly) all of whose
-  // items are in this path — at the top level that's every tag, so the top shows the
-  // roots. `also`: tags on only some of these items (Christmas under Commercial).
-  const NEST = 0.95;
-  const childrenOf = (path: string[]): { inside: { tag: string; count: number }[]; also: { tag: string; count: number }[] } => {
-    const total = countOf(path);
-    const by = new Map<string, number>(), pair = new Map<string, number>();
-    for (const c of combos) {
-      if (!path.every((t) => c.set.has(t))) continue;
-      const here = [...c.set].filter((t) => !path.includes(t));
-      for (const a of here) { by.set(a, (by.get(a) ?? 0) + c.count); for (const b of here) if (a !== b) pair.set(`${a}\u0001${b}`, (pair.get(`${a}\u0001${b}`) ?? 0) + c.count); }
-    }
-    const cand = [...by].filter(([, n]) => n < total).map(([t, n]) => ({ tag: t, count: n }));
-    const nested = (b: { tag: string; count: number }, among: { tag: string; count: number }[]) =>
-      among.some((a) => a.tag !== b.tag && (a.count > b.count || (a.count === b.count && a.tag < b.tag)) && (pair.get(`${a.tag}\u0001${b.tag}`) ?? 0) >= NEST * b.count);
-    const sort = (l: { tag: string; count: number }[]) => l.sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-    const insideAll = cand.filter((t) => t.count >= NEST * countOf([t.tag]));
-    const inside = insideAll.filter((t) => !nested(t, insideAll));
-    const insideSet = new Set(insideAll.map((t) => t.tag));
-    const rest = cand.filter((t) => !insideSet.has(t.tag));
-    const also = rest.filter((t) => !nested(t, rest));
-    return { inside: sort(inside), also: sort(also) };
-  };
+  // the folder tree: every folder with how many items are in it and below it
+  type FNode = { library: string; dir: string; name: string; count: number; kids: Map<string, FNode> };
+  const libsSeen = new Map<string, FNode>();
+  for (const fc of res?.folders ?? []) {
+    let lib = libsSeen.get(lc(fc.library));
+    if (!lib) { lib = { library: fc.library, dir: "", name: fc.library, count: 0, kids: new Map() }; libsSeen.set(lc(fc.library), lib); }
+    lib.count += fc.count;
+    let node = lib;
+    const segs = fc.dir ? fc.dir.split("/") : [];
+    segs.forEach((s, i) => {
+      let k = node.kids.get(lc(s));
+      if (!k) { k = { library: fc.library, dir: segs.slice(0, i + 1).join("/"), name: s, count: 0, kids: new Map() }; node.kids.set(lc(s), k); }
+      k.count += fc.count;
+      node = k;
+    });
+  }
+  const sorted = (m: Map<string, FNode>) => [...m.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
+  const libNodes = sorted(libsSeen);
+  const multiLib = libNodes.length > 1;
 
-  const rules = value.map(ruleOf).filter((r) => r.length);
-  const ticked = new Set(rules.map(ruleKey));
-  const toggle = (path: string[]) => {
-    const k = ruleKey(path);
-    const named = path.map((t) => display.get(t) ?? t);
-    onChange(ticked.has(k) ? value.filter((r) => ruleKey(ruleOf(r)) !== k) : [...value, named.length === 1 ? named[0] : named]);
+  const folderRules = value.filter(isFolderV);
+  const tagRules = value.filter((r) => !isFolderV(r)).map((r) => tagRuleOf(r as string | string[])).filter((r) => r.length);
+  const ticked = new Set(folderRules.map((r) => folderKey(r.library, r.folder)));
+  // a folder is covered when it, or a folder above it, is ticked
+  const coveredBy = (library: string, dir: string): FolderRuleV | undefined => folderRules.find((r) =>
+    (!r.library || lc(r.library) === lc(library)) && (lc(dir) === lc(r.folder) || lc(dir).startsWith(lc(r.folder) + "/")));
+  const toggleFolder = (n: FNode) => {
+    const k = folderKey(n.library, n.dir);
+    if (ticked.has(k)) onChange(value.filter((r) => !(isFolderV(r) && folderKey(r.library, r.folder) === k)));
+    // ticking a folder replaces any ticked folders inside it (they'd be covered anyway)
+    else onChange([...value.filter((r) => !(isFolderV(r) && (!r.library || lc(r.library) === lc(n.library)) && lc(r.folder).startsWith(lc(n.dir) + "/"))), { library: n.library, folder: n.dir }]);
   };
-  const pathId = (path: string[]) => path.join("\u0001");
-  const flip = (path: string[]) => setOpenPaths((s) => { const n = new Set(s); const id = pathId(path); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const matchedBy = (rs: string[][]) => combos.reduce((n, c) => (rs.some((r) => r.every((t) => c.set.has(t.toLowerCase()))) ? n + c.count : n), 0);
-  const unknown = res && !res.error ? rules.filter((r) => countOf(r.map((t) => t.toLowerCase())) === 0) : [];
-  const universal = res ? [...display.keys()].filter((t) => countOf([t]) === res.items && res.items > 0) : [];
+  const removeRule = (rule: RuleV) => onChange(value.filter((r) => r !== rule));
+  const flip = (id: string) => setOpenIds((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  const q = filter.trim().toLowerCase();
-  const Node = ({ path, tag, count, depth }: { path: string[]; tag: string; count: number; depth: number }) => {
-    const id = pathId(path);
-    const isOpen = openPaths.has(id);
-    const kids = depth < 5 ? childrenOf(path) : { inside: [], also: [] };
-    const canOpen = kids.inside.length + kids.also.length > 0;
-    const alsoId = [...path, "\u0002also"];
-    const alsoOpen = openPaths.has(pathId(alsoId));
+  // exact count for folder rules; tag rules (older configs) add their own matches
+  const folderMatched = (res?.folders ?? []).reduce((n, fc) => (coveredBy(fc.library, fc.dir) ? n + fc.count : n), 0);
+  const combos = (res?.combos ?? []).map((c) => ({ set: new Set(c.tags.map(lc)), count: c.count }));
+  const tagMatched = combos.reduce((n, c) => (tagRules.some((r) => r.every((t) => c.set.has(lc(t)))) ? n + c.count : n), 0);
+  const folderExists = (r: FolderRuleV) => (res?.folders ?? []).some((fc) => (!r.library || lc(r.library) === lc(fc.library)) && (lc(fc.dir) === lc(r.folder) || lc(fc.dir).startsWith(lc(r.folder) + "/")));
+  const ruleLabel = (r: RuleV) => isFolderV(r)
+    ? `${multiLib && r.library ? `${r.library} › ` : ""}${r.folder.split("/").join(" › ")}`
+    : `tags: ${tagRuleOf(r as string | string[]).join(" + ")}`;
+
+  const Node = ({ n, depth, label }: { n: FNode; depth: number; label?: string }) => {
+    const id = folderKey(n.library, n.dir) + (n.dir ? "" : "\u0002lib");
+    const isLib = !n.dir;
+    const open = openIds.has(id);
+    const kids = sorted(n.kids);
+    const parentRule = !isLib ? coveredBy(n.library, n.dir) : undefined;
+    const own = !isLib && ticked.has(folderKey(n.library, n.dir));
+    const inherited = !!parentRule && !own;
     return (
       <div>
         <div className="tag-node" style={{ paddingLeft: depth * 18 }}>
-          <button type="button" className="tag-twisty" onClick={() => flip(path)} disabled={!canOpen} aria-label={isOpen ? "Close" : "Open"} title={canOpen ? (isOpen ? "Hide narrower tags" : "Narrow it further") : "Nothing narrower"}>{canOpen ? (isOpen ? "▾" : "▸") : ""}</button>
-          <label className="switch"><input type="checkbox" checked={ticked.has(ruleKey(path))} onChange={() => toggle(path)} /> {display.get(tag) ?? tag} <span className="muted" style={{ fontSize: 11 }}>({count.toLocaleString()})</span></label>
+          <button type="button" className="tag-twisty" onClick={() => flip(id)} disabled={!kids.length} aria-label={open ? "Close" : "Open"}>{kids.length ? (open ? "▾" : "▸") : ""}</button>
+          {isLib
+            ? <span><b>{n.name}</b> <span className="muted" style={{ fontSize: 11 }}>({n.count.toLocaleString()}) library</span></span>
+            : <label className="switch" title={inherited ? "Included: a folder above it is ticked" : undefined}>
+                <input type="checkbox" checked={own || inherited} disabled={inherited} onChange={() => toggleFolder(n)} /> 📁 {label ?? n.name} <span className="muted" style={{ fontSize: 11 }}>({n.count.toLocaleString()})</span>
+              </label>}
         </div>
-        {isOpen && kids.inside.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 1} />)}
-        {isOpen && kids.also.length > 0 && (
-          <div>
-            <div className="tag-node" style={{ paddingLeft: (depth + 1) * 18 }}>
-              <button type="button" className="tag-twisty" onClick={() => flip(alsoId)} aria-label={alsoOpen ? "Close" : "Open"}>{alsoOpen ? "▾" : "▸"}</button>
-              <a className="muted" style={{ fontSize: 12 }} onClick={() => flip(alsoId)} title={`Tags that are on only some of the ${display.get(tag) ?? tag} items, to combine with it`}>
-                Also on some of these <span style={{ fontSize: 11 }}>({kids.also.length} tag{kids.also.length === 1 ? "" : "s"})</span>
-              </a>
-            </div>
-            {alsoOpen && kids.also.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 2} />)}
-          </div>
-        )}
+        {open && kids.map((k) => <Node key={k.dir} n={k} depth={depth + 1} />)}
       </div>
     );
   };
-  // the roots; a filter searches every tag instead (nested ones too), listed on their own
-  const allTags = res ? [...display.keys()].map((t) => ({ tag: t, count: countOf([t]) })).filter((t) => t.count < res.items).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag)) : [];
-  const roots = !res ? [] : q ? allTags.filter((t) => t.tag.includes(q)) : childrenOf([]).inside;
+  // top level: the folders at the library's root (or the libraries, when there are several)
+  const q = filter.trim().toLowerCase();
+  const allFolders: FNode[] = [];
+  const walk = (n: FNode) => { for (const k of n.kids.values()) { allFolders.push(k); walk(k); } };
+  libNodes.forEach(walk);
+  const matches = q ? allFolders.filter((n) => lc(n.name).includes(q)).sort((a, b) => a.dir.localeCompare(b.dir)) : [];
+  const rootFiles = libNodes.reduce((n, l) => n + l.count - [...l.kids.values()].reduce((m, k) => m + k.count, 0), 0);
 
   return (
     <div className="lib-field">
       <div>{f.label}</div>
       {f.help && <p className="muted" style={{ fontSize: 11, margin: "2px 0 4px" }}>{f.help}</p>}
-      {rules.length > 0 && (
+      {value.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "2px 0 6px" }}>
-          {rules.map((r) => (
-            <button key={ruleKey(r)} type="button" className={unknown.includes(r) ? "danger" : ""} style={{ fontSize: 12, padding: "2px 8px" }} title={unknown.includes(r) ? "No filler item has all of these — click to remove" : "Click to remove"}
-              onClick={() => toggle(r.map((t) => t.toLowerCase()))}>{r.map((t) => display.get(t.toLowerCase()) ?? t).join(" › ")} ✕</button>
-          ))}
+          {value.map((r, i) => {
+            const missing = !!res && !res.error && (isFolderV(r) ? !folderExists(r) : !combos.some((c) => tagRuleOf(r as string | string[]).every((t) => c.set.has(lc(t)))));
+            return (
+              <button key={i} type="button" className={missing ? "danger" : ""} style={{ fontSize: 12, padding: "2px 8px" }}
+                title={missing ? "Nothing in this filler matches — click to remove" : "Click to remove"} onClick={() => removeRule(r)}>{isFolderV(r) ? "📁 " : ""}{ruleLabel(r)} ✕</button>
+            );
+          })}
         </div>
       )}
-      {!src ? <span className="muted" style={{ fontSize: 12 }}>Pick filler libraries or a filler collection above to see their tags.</span>
-        : !res ? <span className="muted" style={{ fontSize: 12 }}>Looking up tags…</span>
+      {!src ? <span className="muted" style={{ fontSize: 12 }}>Pick filler libraries or a filler collection above to see their folders.</span>
+        : !res ? <span className="muted" style={{ fontSize: 12 }}>Looking up folders…</span>
         : res.error ? <span className="err" style={{ fontSize: 12 }}>{res.error}</span>
-        : !res.combos ? <span className="muted" style={{ fontSize: 12 }}>Restart the scheduler to see the tag tree.</span>
-        : display.size === 0 ? <span className="muted" style={{ fontSize: 12 }}>None of the {res.items.toLocaleString()} filler items have tags. Add tags to them (in the files' metadata, then rescan) to use this.</span>
+        : !res.folders ? <span className="muted" style={{ fontSize: 12 }}>Restart the scheduler to see the folder tree.</span>
+        : allFolders.length === 0 ? <span className="muted" style={{ fontSize: 12 }}>The {res.items.toLocaleString()} filler items aren't in subfolders, so there's nothing to narrow by.</span>
         : <>
-          {display.size > 12 && <input placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 240, fontSize: 12, marginBottom: 4 }} />}
+          {allFolders.length > 12 && <input placeholder="Find a folder…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 240, fontSize: 12, marginBottom: 4 }} />}
           <div className="tag-tree">
-            {roots.map((t) => <Node key={t.tag} path={[t.tag]} tag={t.tag} count={t.count} depth={0} />)}
-            {roots.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No tag matches “{filter}”.</span>}
+            {q ? (matches.length ? matches.map((n) => <Node key={`${n.library}/${n.dir}`} n={n} depth={0} label={`${multiLib ? `${n.library} › ` : ""}${n.dir.split("/").join(" › ")}`} />)
+                  : <span className="muted" style={{ fontSize: 12 }}>No folder matches “{filter}”.</span>)
+              : multiLib ? libNodes.map((l) => <Node key={l.library} n={l} depth={0} />)
+              : sorted(libNodes[0].kids).map((k) => <Node key={k.dir} n={k} depth={0} />)}
           </div>
           <span className="muted" style={{ fontSize: 11 }}>
-            {rules.length ? `Breaks draw from ${matchedBy(rules).toLocaleString()} of ${res.items.toLocaleString()} filler items.` : `${res.items.toLocaleString()} filler items.`}
-            {universal.length > 0 && ` On every item (so not listed): ${universal.map((t) => display.get(t)).join(", ")}.`}
+            {value.length
+              ? `Breaks draw from ${(folderMatched + tagMatched).toLocaleString()} of ${res.items.toLocaleString()} filler items.`
+              : `${res.items.toLocaleString()} filler items in ${allFolders.length.toLocaleString()} folders.`}
+            {rootFiles > 0 && ` ${rootFiles.toLocaleString()} sit directly in the library's top folder.`}
           </span>
         </>}
     </div>
