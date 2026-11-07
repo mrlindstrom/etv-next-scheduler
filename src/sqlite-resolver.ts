@@ -57,6 +57,23 @@ const LANG: Record<string, string> = {
 };
 function langName(code?: string): string | undefined { const c = (code ?? "").toLowerCase(); return LANG[c]; }
 
+/** Items with at least one of these tags (case-insensitive; a show's tags count for its episodes). */
+export function filterByTags(items: MediaItem[], tags: string[]): MediaItem[] {
+  const want = new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean));
+  if (!want.size) return items;
+  return items.filter((m) => (m.tags ?? []).some((t) => want.has(t.toLowerCase())));
+}
+
+/** Tags across a set of items, most common first. */
+export function tagCounts(items: MediaItem[]): { tag: string; count: number }[] {
+  const by = new Map<string, { tag: string; count: number }>();
+  for (const m of items) for (const t of new Set((m.tags ?? []).filter(Boolean))) {
+    const k = t.toLowerCase();
+    const e = by.get(k); if (e) e.count++; else by.set(k, { tag: t, count: 1 });
+  }
+  return [...by.values()].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+}
+
 /** Build a SQLite `file:` URI with ?immutable=1 for a path (Windows or POSIX). */
 export function toImmutableUri(p: string): string {
   const fwd = p.replace(/\\/g, "/").replace(/ /g, "%20");
@@ -744,7 +761,8 @@ export class SqliteResolver implements ContentResolver {
       case "playlist": rows = this.playlistRows(def.playlist ?? def.collection ?? ""); break;
       default: rows = [];
     }
-    return this.finishRows(rows, def.expand !== false, def.includeSpecials);
+    const items = this.finishRows(rows, def.expand !== false, def.includeSpecials);
+    return def.tags?.length ? filterByTags(items, def.tags) : items;
   }
 
   /** Shared tail of content resolution: expand shows/seasons to episodes, drop

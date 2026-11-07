@@ -35,7 +35,7 @@ export interface GridSeason { id: string; name: string; from?: string; to?: stri
 /** A pre-emption: either on fixed dates ("YYYY-MM-DD"), or every year on a named
  *  holiday (e.g. "thanksgiving", "hanukkah") for `days` days starting that day. */
 export interface GridEvent { id: string; name: string; dateFrom?: string; dateTo?: string; holiday?: string; days?: number; from?: string; to?: string; program: string }
-export interface GridBreaks { enabled?: boolean; mode?: "count" | "interval" | "chapters"; breaks?: number; interval?: number; target?: number }
+export interface GridBreaks { enabled?: boolean; mode?: "count" | "interval" | "chapters"; breaks?: number; interval?: number; target?: number; adTags?: string[] /* breaks: only filler with one of these tags */ }
 export interface GridConfig extends StationOptions {
   programs: GridProgram[];
   seasons: GridSeason[];
@@ -125,7 +125,15 @@ export function compileGrid(cfg: GridConfig): PlayoutDoc {
   if (sid) content.push(sid);
   const br = cfg.breaks ?? {};
   const breaksOn = br.enabled !== false && !!fillKey;
-  if (breaksOn) pods.GRID_BREAK = { key: "GRID_BREAK", target: `${br.target ?? 2} minutes`, slots: [{ content: fillKey!, fill: true, fillerKind: "midroll" }] };
+  // breaks limited to filler with certain tags: their own pool, so padding keeps everything
+  let breakKey = fillKey;
+  const adTags = (br.adTags ?? []).filter(Boolean);
+  if (breaksOn && adTags.length) {
+    const base = content.find((c) => c.key === fillKey)!;
+    breakKey = "GRID_BREAK_FILLER";
+    content.push({ ...base, key: breakKey, tags: adTags });
+  }
+  if (breaksOn) pods.GRID_BREAK = { key: "GRID_BREAK", target: `${br.target ?? 2} minutes`, slots: [{ content: breakKey!, fill: true, fillerKind: "midroll" }] };
 
   // one sequence per program: a slot-sized item, breaks budgeted to fit, padded to the grid
   const seqFor = (pid: string): string | null => {

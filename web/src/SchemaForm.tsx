@@ -18,13 +18,14 @@ export function SchemaForm({ fields, value, onChange }: { fields: SchemaField[];
   const set = (k: string, v: any) => onChange({ ...value, [k]: v });
   return (
     <div className="form">
-      {fields.map((f, i) => visible(f, value) ? <FieldView key={i} f={f} value={value?.[f.key]} onChange={(v) => set(f.key, v)} /> : null)}
+      {fields.map((f, i) => visible(f, value) ? <FieldView key={i} f={f} value={value?.[f.key]} group={value} onChange={(v) => set(f.key, v)} /> : null)}
     </div>
   );
 }
 
-function FieldView({ f, value, onChange }: { f: SchemaField; value: any; onChange: (v: any) => void }) {
+function FieldView({ f, value, group, onChange }: { f: SchemaField; value: any; group?: any; onChange: (v: any) => void }) {
   if (f.type === "list") return <ListField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
+  if (f.type === "tags") return <TagsField f={f} value={Array.isArray(value) ? value : []} group={group} onChange={onChange} />;
   if (f.type === "libraries") return <LibrariesField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
   if (f.type === "collection") return <CollectionField f={f} value={value} onChange={onChange} />;
   if (f.type === "channel") return <ChannelField f={f} value={value} onChange={onChange} />;
@@ -63,6 +64,59 @@ function LibrariesField({ f, value, onChange }: { f: Extract<SchemaField, { type
           <label key={l.id} className="switch"><input type="checkbox" checked={sel.has(l.name)} onChange={() => toggle(l.name)} /> {l.name} <span className="muted" style={{ fontSize: 11 }}>({l.kind})</span></label>
         ))}
       </div>
+    </div>
+  );
+}
+
+// Tick-boxes of the tags on the filler its sibling fields pick (the collection, else the
+// libraries), with how many items carry each. Ticked tags that no longer appear stay listed.
+const TAG_CACHE = new Map<string, Promise<{ items: number; tags: { tag: string; count: number }[]; error?: string }>>();
+function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "tags" }>; value: string[]; group?: any; onChange: (v: string[]) => void }) {
+  const collection: string = (f.collection && group?.[f.collection]) || "";
+  const libraries: string[] = collection ? [] : ((f.libraries && Array.isArray(group?.[f.libraries]) ? group[f.libraries] : []) as string[]).filter(Boolean);
+  const src = collection ? `c:${collection}` : libraries.length ? `l:${[...libraries].sort().join("|")}` : "";
+  const [res, setRes] = useState<{ items: number; tags: { tag: string; count: number }[]; error?: string } | null>(null);
+  const [filter, setFilter] = useState("");
+  useEffect(() => {
+    if (!src) { setRes(null); return; }
+    let live = true;
+    setRes(null);
+    if (!TAG_CACHE.has(src)) TAG_CACHE.set(src, api.fillerTags(collection ? { collection } : { libraries }).catch((e) => { TAG_CACHE.delete(src); return { items: 0, tags: [], error: String(e) }; }));
+    TAG_CACHE.get(src)!.then((r) => { if (live) setRes(r); });
+    return () => { live = false; };
+  }, [src]);
+  const sel = new Set(value.map((t) => t.toLowerCase()));
+  const toggle = (t: string) => onChange(sel.has(t.toLowerCase()) ? value.filter((x) => x.toLowerCase() !== t.toLowerCase()) : [...value, t]);
+  const found = res?.tags ?? [];
+  const missing = value.filter((t) => !found.some((x) => x.tag.toLowerCase() === t.toLowerCase()));
+  const q = filter.trim().toLowerCase();
+  const shown = found.filter((t) => !q || t.tag.toLowerCase().includes(q));
+  const picked = found.filter((t) => sel.has(t.tag.toLowerCase())).reduce((n, t) => n + t.count, 0);
+  return (
+    <div className="lib-field">
+      <div>{f.label}</div>
+      {f.help && <p className="muted" style={{ fontSize: 11, margin: "2px 0 4px" }}>{f.help}</p>}
+      {!src ? <span className="muted" style={{ fontSize: 12 }}>Pick filler libraries or a filler collection above to see their tags.</span>
+        : !res ? <span className="muted" style={{ fontSize: 12 }}>Looking up tags…</span>
+        : res.error ? <span className="err" style={{ fontSize: 12 }}>{res.error}</span>
+        : found.length === 0 ? <span className="muted" style={{ fontSize: 12 }}>None of the {res.items.toLocaleString()} filler items have tags. Add tags to them (in the files' metadata, then rescan) to use this.</span>
+        : <>
+          {found.length > 12 && <input placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 240, fontSize: 12, marginBottom: 4 }} />}
+          <div className="lib-checks" style={{ maxHeight: 180, overflow: "auto" }}>
+            {shown.map((t) => (
+              <label key={t.tag} className="switch"><input type="checkbox" checked={sel.has(t.tag.toLowerCase())} onChange={() => toggle(t.tag)} /> {t.tag} <span className="muted" style={{ fontSize: 11 }}>({t.count.toLocaleString()})</span></label>
+            ))}
+          </div>
+          <span className="muted" style={{ fontSize: 11 }}>
+            {value.length ? `Breaks draw from up to ${picked.toLocaleString()} of ${res.items.toLocaleString()} filler items.` : `${res.items.toLocaleString()} filler items, ${found.length} tags.`}
+          </span>
+        </>}
+      {res && !res.error && missing.length > 0 && (
+        <div style={{ fontSize: 12, marginTop: 4 }}>
+          <span className="err">Not on any of this filler: </span>
+          {missing.map((t) => <button key={t} type="button" style={{ fontSize: 11, padding: "1px 6px", marginLeft: 4 }} title="Remove" onClick={() => toggle(t)}>{t} ✕</button>)}
+        </div>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ interface MoviesConfig extends StationOptions {
   fillerLibraries?: string[];       // trailers / shorts between movies
   fillerCollection?: string;
   ads?: boolean;                    // commercial breaks during movies (premium channels: off)
+  adTags?: string[];                // breaks: only filler with one of these tags
   adBreaks?: number;                // breaks per half hour of movie
   themes?: Theme[];
 }
@@ -53,7 +54,15 @@ export function compileMovies(cfg: MoviesConfig): PlayoutDoc {
   if (fill && cfg.matchEra) content[content.length - 1].matchEra = true;
   const sid = stationIdContent(cfg);
   if (sid) content.push(sid);
-  if (cfg.ads && fill) pods.MOVIE_BREAK = { key: "MOVIE_BREAK", target: "2 minutes", slots: [{ content: fill, fill: true, fillerKind: "midroll" }] };
+  // breaks limited to filler with certain tags: their own pool, so the gaps between movies keep everything
+  let breakFill = fill;
+  const adTags = (cfg.adTags ?? []).filter(Boolean);
+  if (cfg.ads && fill && adTags.length) {
+    const base = content.find((c) => c.key === fill)!;
+    breakFill = "MOVIE_BREAK_FILLER";
+    content.push({ ...base, key: breakFill, tags: adTags });
+  }
+  if (cfg.ads && fill) pods.MOVIE_BREAK = { key: "MOVIE_BREAK", target: "2 minutes", slots: [{ content: breakFill!, fill: true, fillerKind: "midroll" }] };
 
   const block = (contentKey: string, seqKey: string) => {
     const items: Instruction[] = [{ op: "epg_group", value: true }];
@@ -97,6 +106,8 @@ const SCHEMA: Field[] = [
   { type: "collection", key: "fillerCollection", label: "Or a filler collection (overrides the libraries)" },
   { type: "checkbox", key: "ads", label: "Commercial breaks during movies (premium channels run none)" },
   { type: "number", key: "adBreaks", label: "Breaks per half hour of movie", default: 1, min: 1, showIf: { key: "ads", equals: true as any } },
+  { type: "tags", key: "adTags", label: "Only break filler with these tags (optional)", libraries: "fillerLibraries", collection: "fillerCollection", showIf: { key: "ads", equals: true as any },
+    help: "Breaks play only items carrying at least one of the ticked tags. Nothing ticked = any filler. The gaps between movies still use all of it." },
   ...STATION_FIELDS,
   {
     type: "list", key: "themes", label: "Theme nights", addLabel: "+ Add theme night", itemTitle: "title",

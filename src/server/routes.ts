@@ -37,7 +37,9 @@ import { readLog, logLine } from "./runtime-log.js";
 import { indexService } from "./index-service.js";
 import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
-import { SqliteResolver } from "../sqlite-resolver.js";
+import { SqliteResolver, tagCounts } from "../sqlite-resolver.js";
+import { parseCollectionRef } from "../collection-ref.js";
+import type { MediaItem } from "../model.js";
 import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile } from "./overlay-library.js";
 import { OVERLAY_FIELDS, OVERLAY_SLOTS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, findPicture, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
@@ -477,6 +479,23 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const to = typeof b.name === "string" ? b.name.trim() : undefined;
     const channels = before && to && to !== before ? await renameInChannels(abs(store.get().channelsDir), type, before, to) : [];
     return { ok: true, channels };
+  });
+  // the tags on the items of a filler source (libraries, or a collection), for the
+  // channel forms' "only filler with these tags" pickers
+  app.post("/api/filler-tags", async (req) => {
+    if (!libraryExists(libDb())) return { items: 0, tags: [], error: "Import a library first." };
+    const b = (req.body ?? {}) as { libraries?: string[]; collection?: string };
+    const r = getResolver(libDb()); r.setDisabledLibraries(disabled());
+    const libs = (b.libraries ?? []).filter(Boolean);
+    let items: MediaItem[] = [];
+    if (b.collection) {
+      const { type, name } = parseCollectionRef(b.collection);
+      if (type === "playlist") return { items: 0, tags: [], error: "Tags can't narrow a playlist; pick a collection or filler libraries." };
+      items = await r.resolveContent({ key: "tags", kind: type === "smart" ? "smart_collection" : type === "multi" ? "multi_collection" : "collection", order: "chronological", collection: name, raw: {} } as any);
+    } else if (libs.length) {
+      items = await r.resolveContent({ key: "tags", kind: "search", order: "chronological", query: `library_name:(${libs.map((l) => `"${l.replace(/"/g, "")}"`).join(" OR ")})`, raw: {} } as any);
+    }
+    return { items: items.length, tags: tagCounts(items) };
   });
   // what uses a collection: channels (by name) and multi-collections / playlists in the library
   app.get("/api/collections/:type/:id/usage", async (req) => {

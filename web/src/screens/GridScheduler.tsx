@@ -299,6 +299,8 @@ export function GridScheduler({ value, onChange }: { value: any; onChange: (v: a
             { type: "number", key: "breaks", label: "Breaks per half hour", default: 2, min: 1, showIf: { key: "mode", equals: "count" } },
             { type: "number", key: "interval", label: "Minutes between breaks", default: 8, min: 1, showIf: { key: "mode", equals: "interval" } },
             { type: "number", key: "target", label: "Break length (minutes)", default: 2, min: 1 },
+            { type: "tags", key: "adTags", label: "Only break filler with these tags (optional)", libraries: "fillerLibraries", collection: "fillerCollection", showIf: { key: "enabled", equals: [true as any, ""] },
+              help: "Breaks play only items carrying at least one of the ticked tags. Nothing ticked = any filler. Padding to the half hour still uses all of it." },
             { type: "checkbox", key: "matchEra", label: "Match commercials to the show's era", help: "Breaks use commercials from within a few years of the show (by year in the file name or metadata), so 90s shows get 90s ads." },
             { type: "select", key: "stationIdSource", label: "Station ID before the top of the hour", options: [{ value: "collection", label: "From a collection" }, { value: "search", label: "From a search query" }], default: "collection" },
             { type: "collection", key: "stationId", label: "Station ID collection (blank = none)", help: "A short ident (under a minute) that ends exactly on the hour.", showIf: { key: "stationIdSource", equals: "collection" } },

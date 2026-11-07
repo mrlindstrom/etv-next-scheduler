@@ -32,6 +32,7 @@ interface Block {
   preRollCount?: number;
   adCollection?: string;           // mid-roll breaks
   adCount?: number;                // items per break (instead of a target length)
+  adTags?: string[];               // mid-roll: only filler with at least one of these tags
   padCollection?: string;          // clock-alignment padding (legacy post-roll "pad")
   fallbackCollection?: string;     // fills whatever the padding couldn't
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
@@ -43,6 +44,7 @@ interface ScheduleConfig extends StationOptions { blocks: Block[]; }
 
 const ORDERS = ["shuffle", "chronological", "random", "season_episode", "shuffle_in_order", "multi_episode_shuffle"];
 const quote = (n: string) => `"${String(n).replace(/"/g, "")}"`;
+const fillLibsQuery = (libs: string[]) => libs.map(quote).join(" OR ");
 
 function contentDef(key: string, source: string, value: string, order: PlaybackOrder): ContentDef {
   if (source === "collection") {
@@ -67,13 +69,19 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     const fillerLibs = (b.fillerLibraries ?? b.adLibraries ?? []).filter(Boolean);
     const hasFiller = fillerLibs.length > 0;
     const fillerKey = `b${i}_fill`;
-    if (hasFiller) content.push(contentDef(fillerKey, "search", `library_name:(${fillerLibs.map(quote).join(" OR ")})`, "shuffle"));
+    if (hasFiller) content.push(contentDef(fillerKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"));
     // a collection-sourced filler role, else the shared library pool (if any)
     const roleKey = (role: string, ref: string | undefined): string | null => {
       if (ref) { const k = `b${i}_${role}`; content.push(contentDef(k, "collection", ref, "shuffle")); return k; }
       return hasFiller ? fillerKey : null;
     };
-    const adKey = b.ads ? roleKey("mid", b.adCollection) : null;
+    // mid-roll limited to filler with certain tags: its own pool, so padding keeps everything
+    const adTags = (b.adTags ?? []).filter(Boolean);
+    let adKey = b.ads ? roleKey("mid", b.adCollection) : null;
+    if (adKey && adTags.length) {
+      if (adKey === fillerKey) { adKey = `b${i}_mid`; content.push({ ...contentDef(adKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"), tags: adTags }); }
+      else { const d = content.find((c) => c.key === adKey); if (d) d.tags = adTags; }
+    }
     const padKey = roleKey("pad", b.padCollection);
     const fallbackKey = b.fallbackCollection ? roleKey("fallback", b.fallbackCollection) ?? undefined : undefined;
 
@@ -171,6 +179,8 @@ const SCHEMA: Field[] = [
       { type: "number", key: "adTarget", label: "Break length (minutes)", default: 2, min: 1 },
       { type: "collection", key: "adCollection", label: "Mid-roll filler collection (optional)", help: "Fill breaks from this collection instead of the filler libraries." },
       { type: "number", key: "adCount", label: "Items per break (collection; blank = fill to break length)", min: 1 },
+      { type: "tags", key: "adTags", label: "Only mid-roll filler with these tags (optional)", libraries: "fillerLibraries", collection: "adCollection", showIf: { key: "ads", equals: true as any },
+        help: "Breaks play only items carrying at least one of the ticked tags. Nothing ticked = any filler. Clock-alignment padding still uses all of it." },
       { type: "collection", key: "preRoll", label: "Pre-roll collection (optional)", help: "Play items from this collection before each program." },
       { type: "number", key: "preRollCount", label: "Pre-roll items", default: 1, min: 1 },
       { type: "collection", key: "padCollection", label: "Clock-alignment filler collection (optional)", help: "Pad to the clock barrier from this collection instead of the filler libraries (legacy post-roll pad)." },

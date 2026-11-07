@@ -22,6 +22,9 @@ export type Field =
   | { type: "overlays"; key: string; label: string; help?: string; showIf?: ShowIf }
   // a multi-select of the user's local libraries (value is a string[] of names)
   | { type: "libraries"; key: string; label: string; help?: string; showIf?: ShowIf }
+  // tick-boxes of the tags found in the filler the sibling fields pick (value is a string[]):
+  // `libraries` / `collection` name those sibling keys (the collection wins when set)
+  | { type: "tags"; key: string; label: string; help?: string; libraries?: string; collection?: string; showIf?: ShowIf }
   // a dropdown of the other channels (value is the channel name)
   | { type: "channel"; key: string; label: string; help?: string; showIf?: ShowIf }
   // a repeatable group of fields (e.g. the list of schedule blocks)

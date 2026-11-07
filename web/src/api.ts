@@ -65,6 +65,7 @@ export type SchemaField =
   | { type: "collection"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "libraries"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "channel"; key: string; label: string; help?: string; showIf?: ShowIf }
+  | { type: "tags"; key: string; label: string; help?: string; libraries?: string; collection?: string; showIf?: ShowIf }
   | { type: "overlays"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; fields: SchemaField[]; showIf?: ShowIf };
 /** What a remote stream channel's playlist and guide resolve to ("Check stream"). */
@@ -242,6 +243,7 @@ export const api = {
   addToCollection: (collectionId: number, itemId: number): Promise<{ ok?: boolean; error?: string }> => fetch(`/api/collections/collection/${collectionId}/items`, opts("POST", { itemId })).then(j),
   removeFromCollection: (collectionId: number, itemId: number): Promise<{ ok?: boolean }> => fetch(`/api/collections/collection/${collectionId}/items/${itemId}`, opts("DELETE")).then(j),
   updateCollection: (type: string, id: number, patch: { name?: string; query?: string }): Promise<{ ok: boolean; channels?: string[] }> => fetch(`/api/collections/${type}/${id}`, opts("PUT", patch)).then(j),
+  fillerTags: (src: { libraries?: string[]; collection?: string }): Promise<{ items: number; tags: { tag: string; count: number }[]; error?: string }> => fetch("/api/filler-tags", opts("POST", src)).then(j),
   collectionUsage: (type: string, id: number): Promise<{ channels: string[]; library: string[] }> => fetch(`/api/collections/${type}/${id}/usage`).then(j),
   multiMembers: (id: number): Promise<MultiMember[]> => fetch(`/api/collections/multi/${id}/members`).then(j),
   addMultiMember: (id: number, m: { type: "collection" | "smart"; id: number }): Promise<{ ok?: boolean; error?: string }> => fetch(`/api/collections/multi/${id}/members`, opts("POST", m)).then(j),
