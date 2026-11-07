@@ -61,8 +61,18 @@ function langName(code?: string): string | undefined { const c = (code ?? "").to
 export type TagRule = string | string[];
 /** A folder rule: everything in this folder (relative to the library's root, "/"-separated) and below it. */
 export interface FolderRule { library?: string; folder: string }
-export type FillerRule = TagRule | FolderRule;
+/** A tag rule from the tag tree: every one of `tags`, except items that also have all of
+ *  one of the `except` paths (tags below it in the tree, e.g. PSA except Christmas). */
+export interface TagSetRule { tags: string[]; except?: string[][] }
+export type FillerRule = TagRule | FolderRule | TagSetRule;
 export const isFolderRule = (r: unknown): r is FolderRule => !!r && typeof r === "object" && !Array.isArray(r) && typeof (r as any).folder === "string";
+export const isTagSetRule = (r: unknown): r is TagSetRule => !!r && typeof r === "object" && !Array.isArray(r) && Array.isArray((r as any).tags);
+/** Does an item with these (lower-cased) tags match a tag-tree rule? */
+export function matchesTagSet(have: Set<string>, r: TagSetRule): boolean {
+  const need = r.tags.map((t) => t.toLowerCase());
+  if (!need.length || !need.every((t) => have.has(t))) return false;
+  return !(r.except ?? []).some((e) => e.length > 0 && e.every((t) => have.has(t.toLowerCase())));
+}
 /** Rules as lower-cased tag sets (blank tags and empty rules dropped). */
 export function normalizeTagRules(rules: TagRule[]): string[][] {
   return rules.map((r) => (Array.isArray(r) ? r : [r]).map((t) => String(t ?? "").trim().toLowerCase()).filter(Boolean)).filter((r) => r.length);
@@ -812,11 +822,13 @@ export class SqliteResolver implements ContentResolver {
    *  it; a tag rule needs every one of its tags on the item. */
   filterByRules(items: MediaItem[], rules: FillerRule[]): MediaItem[] {
     const folders = rules.filter(isFolderRule).map((r) => ({ library: (r.library ?? "").toLowerCase(), dir: r.folder.replace(/\\/g, "/").replace(/^\/+|\/+$/g, "").toLowerCase() })).filter((r) => r.dir);
-    const tagRules = rules.filter((r) => !isFolderRule(r)) as TagRule[];
+    const sets = rules.filter(isTagSetRule);
+    const tagRules = rules.filter((r) => !isFolderRule(r) && !isTagSetRule(r)) as TagRule[];
     const tagged = tagRules.length ? new Set(filterByTags(items, tagRules)) : null;
-    if (!folders.length && !tagged) return items;
+    if (!folders.length && !tagged && !sets.length) return items;
     return items.filter((m) => {
       if (tagged?.has(m)) return true;
+      if (sets.length) { const have = new Set((m.tags ?? []).map((t) => t.toLowerCase())); if (sets.some((r) => matchesTagSet(have, r))) return true; }
       if (!folders.length) return false;
       const f = this.folderOf(m.path);
       if (!f) return false;

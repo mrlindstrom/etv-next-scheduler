@@ -35,7 +35,7 @@ export interface GridSeason { id: string; name: string; from?: string; to?: stri
 /** A pre-emption: either on fixed dates ("YYYY-MM-DD"), or every year on a named
  *  holiday (e.g. "thanksgiving", "hanukkah") for `days` days starting that day. */
 export interface GridEvent { id: string; name: string; dateFrom?: string; dateTo?: string; holiday?: string; days?: number; from?: string; to?: string; program: string }
-export interface GridBreaks { enabled?: boolean; mode?: "count" | "interval" | "chapters"; breaks?: number; interval?: number; target?: number; adTags?: (string | string[] | { library?: string; folder: string })[] /* breaks: only filler matching a rule (a tag, or a path of tags all on the item) */ }
+export interface GridBreaks { enabled?: boolean; mode?: "count" | "interval" | "chapters"; breaks?: number; interval?: number; target?: number; adTags?: NonNullable<ContentDef["tags"]> /* breaks: only filler matching a rule (a tag, or a path of tags all on the item) */ }
 export interface GridConfig extends StationOptions {
   programs: GridProgram[];
   seasons: GridSeason[];
