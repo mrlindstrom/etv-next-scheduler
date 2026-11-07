@@ -37,7 +37,7 @@ import { readLog, logLine } from "./runtime-log.js";
 import { indexService } from "./index-service.js";
 import { fieldCatalog, explainQuery, suggestField } from "../search-help.js";
 import { parseQuery } from "../search.js";
-import { SqliteResolver, tagCounts } from "../sqlite-resolver.js";
+import { SqliteResolver, tagCounts, tagCombos } from "../sqlite-resolver.js";
 import { parseCollectionRef } from "../collection-ref.js";
 import type { MediaItem } from "../model.js";
 import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile } from "./overlay-library.js";
@@ -495,7 +495,7 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     } else if (libs.length) {
       items = await r.resolveContent({ key: "tags", kind: "search", order: "chronological", query: `library_name:(${libs.map((l) => `"${l.replace(/"/g, "")}"`).join(" OR ")})`, raw: {} } as any);
     }
-    return { items: items.length, tags: tagCounts(items) };
+    return { items: items.length, tags: tagCounts(items), combos: tagCombos(items) };
   });
   // what uses a collection: channels (by name) and multi-collections / playlists in the library
   app.get("/api/collections/:type/:id/usage", async (req) => {

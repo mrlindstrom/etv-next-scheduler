@@ -57,11 +57,32 @@ const LANG: Record<string, string> = {
 };
 function langName(code?: string): string | undefined { const c = (code ?? "").toLowerCase(); return LANG[c]; }
 
-/** Items with at least one of these tags (case-insensitive; a show's tags count for its episodes). */
-export function filterByTags(items: MediaItem[], tags: string[]): MediaItem[] {
-  const want = new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean));
-  if (!want.size) return items;
-  return items.filter((m) => (m.tags ?? []).some((t) => want.has(t.toLowerCase())));
+/** A tag rule: one tag, or a path of tags that must all be on the item. */
+export type TagRule = string | string[];
+/** Rules as lower-cased tag sets (blank tags and empty rules dropped). */
+export function normalizeTagRules(rules: TagRule[]): string[][] {
+  return rules.map((r) => (Array.isArray(r) ? r : [r]).map((t) => String(t ?? "").trim().toLowerCase()).filter(Boolean)).filter((r) => r.length);
+}
+/** Items matching any rule — every tag of that rule on the item (case-insensitive;
+ *  a show's tags count for its episodes). */
+export function filterByTags(items: MediaItem[], rules: TagRule[]): MediaItem[] {
+  const want = normalizeTagRules(rules);
+  if (!want.length) return items;
+  return items.filter((m) => { const have = new Set((m.tags ?? []).map((t) => t.toLowerCase())); return want.some((r) => r.every((t) => have.has(t))); });
+}
+
+/** The distinct tag sets across a set of items, with how many items have each set
+ *  (enough for the channel form to draw the tag tree and count any rule exactly). */
+export function tagCombos(items: MediaItem[]): { tags: string[]; count: number }[] {
+  const by = new Map<string, { tags: string[]; count: number }>();
+  for (const m of items) {
+    const seen = new Map<string, string>();
+    for (const t of m.tags ?? []) if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+    const tags = [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+    const k = tags.map((t) => t.toLowerCase()).join("\u0001");
+    const e = by.get(k); if (e) e.count++; else by.set(k, { tags, count: 1 });
+  }
+  return [...by.values()];
 }
 
 /** Tags across a set of items, most common first. */

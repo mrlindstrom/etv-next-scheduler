@@ -68,15 +68,24 @@ function LibrariesField({ f, value, onChange }: { f: Extract<SchemaField, { type
   );
 }
 
-// Tick-boxes of the tags on the filler its sibling fields pick (the collection, else the
-// libraries), with how many items carry each. Ticked tags that no longer appear stay listed.
-const TAG_CACHE = new Map<string, Promise<{ items: number; tags: { tag: string; count: number }[]; error?: string }>>();
-function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "tags" }>; value: string[]; group?: any; onChange: (v: string[]) => void }) {
+// A tree of the tags on the filler its sibling fields pick (the collection, else the
+// libraries). The top level is every tag; opening one lists the other tags found on
+// those same items, and so on. A ticked node is a rule needing every tag on its path
+// (Commercial › Food › Fast Food); several ticked rules mix. A tag that every item at
+// that level already has narrows nothing, so it isn't listed there.
+type TagSource = { items: number; tags: { tag: string; count: number }[]; combos?: { tags: string[]; count: number }[]; error?: string };
+type Combo = { set: Set<string>; count: number };
+const TAG_CACHE = new Map<string, Promise<TagSource>>();
+const ruleOf = (r: string | string[]): string[] => (Array.isArray(r) ? r : [r]).filter(Boolean);
+const ruleKey = (r: string[]) => r.map((t) => t.toLowerCase()).sort().join("\u0001");
+
+function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "tags" }>; value: (string | string[])[]; group?: any; onChange: (v: (string | string[])[]) => void }) {
   const collection: string = (f.collection && group?.[f.collection]) || "";
   const libraries: string[] = collection ? [] : ((f.libraries && Array.isArray(group?.[f.libraries]) ? group[f.libraries] : []) as string[]).filter(Boolean);
   const src = collection ? `c:${collection}` : libraries.length ? `l:${[...libraries].sort().join("|")}` : "";
-  const [res, setRes] = useState<{ items: number; tags: { tag: string; count: number }[]; error?: string } | null>(null);
+  const [res, setRes] = useState<TagSource | null>(null);
   const [filter, setFilter] = useState("");
+  const [openPaths, setOpenPaths] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!src) { setRes(null); return; }
     let live = true;
@@ -85,38 +94,81 @@ function TagsField({ f, value, group, onChange }: { f: Extract<SchemaField, { ty
     TAG_CACHE.get(src)!.then((r) => { if (live) setRes(r); });
     return () => { live = false; };
   }, [src]);
-  const sel = new Set(value.map((t) => t.toLowerCase()));
-  const toggle = (t: string) => onChange(sel.has(t.toLowerCase()) ? value.filter((x) => x.toLowerCase() !== t.toLowerCase()) : [...value, t]);
-  const found = res?.tags ?? [];
-  const missing = value.filter((t) => !found.some((x) => x.tag.toLowerCase() === t.toLowerCase()));
+
+  const combos: Combo[] = (res?.combos ?? []).map((c) => ({ set: new Set(c.tags.map((t) => t.toLowerCase())), count: c.count }));
+  const display = new Map<string, string>(); // lower-case -> as written
+  for (const c of res?.combos ?? []) for (const t of c.tags) if (!display.has(t.toLowerCase())) display.set(t.toLowerCase(), t);
+  const countOf = (path: string[]) => combos.reduce((n, c) => (path.every((t) => c.set.has(t)) ? n + c.count : n), 0);
+  // the tags under a path: those on some (not all) of the items the path matches
+  const childrenOf = (path: string[]): { tag: string; count: number }[] => {
+    const total = countOf(path);
+    const by = new Map<string, number>();
+    for (const c of combos) {
+      if (!path.every((t) => c.set.has(t))) continue;
+      for (const t of c.set) if (!path.includes(t)) by.set(t, (by.get(t) ?? 0) + c.count);
+    }
+    return [...by].filter(([, n]) => n < total).map(([t, n]) => ({ tag: t, count: n })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
+  };
+
+  const rules = value.map(ruleOf).filter((r) => r.length);
+  const ticked = new Set(rules.map(ruleKey));
+  const toggle = (path: string[]) => {
+    const k = ruleKey(path);
+    const named = path.map((t) => display.get(t) ?? t);
+    onChange(ticked.has(k) ? value.filter((r) => ruleKey(ruleOf(r)) !== k) : [...value, named.length === 1 ? named[0] : named]);
+  };
+  const pathId = (path: string[]) => path.join("\u0001");
+  const flip = (path: string[]) => setOpenPaths((s) => { const n = new Set(s); const id = pathId(path); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const matchedBy = (rs: string[][]) => combos.reduce((n, c) => (rs.some((r) => r.every((t) => c.set.has(t.toLowerCase()))) ? n + c.count : n), 0);
+  const unknown = res && !res.error ? rules.filter((r) => countOf(r.map((t) => t.toLowerCase())) === 0) : [];
+  const universal = res ? [...display.keys()].filter((t) => countOf([t]) === res.items && res.items > 0) : [];
+
   const q = filter.trim().toLowerCase();
-  const shown = found.filter((t) => !q || t.tag.toLowerCase().includes(q));
-  const picked = found.filter((t) => sel.has(t.tag.toLowerCase())).reduce((n, t) => n + t.count, 0);
+  const Node = ({ path, tag, count, depth }: { path: string[]; tag: string; count: number; depth: number }) => {
+    const id = pathId(path);
+    const isOpen = openPaths.has(id) || (!!q && depth > 0);
+    const kids = isOpen ? childrenOf(path) : null;
+    const canOpen = depth < 5 && (kids ? kids.length > 0 : childrenOf(path).length > 0);
+    return (
+      <div>
+        <div className="tag-node" style={{ paddingLeft: depth * 18 }}>
+          <button type="button" className="tag-twisty" onClick={() => flip(path)} disabled={!canOpen} aria-label={isOpen ? "Close" : "Open"} title={canOpen ? (isOpen ? "Hide narrower tags" : "Narrow it further") : "Nothing narrower"}>{canOpen ? (isOpen ? "▾" : "▸") : ""}</button>
+          <label className="switch"><input type="checkbox" checked={ticked.has(ruleKey(path))} onChange={() => toggle(path)} /> {display.get(tag) ?? tag} <span className="muted" style={{ fontSize: 11 }}>({count.toLocaleString()})</span></label>
+        </div>
+        {isOpen && kids?.map((k) => <Node key={k.tag} path={[...path, k.tag]} tag={k.tag} count={k.count} depth={depth + 1} />)}
+      </div>
+    );
+  };
+  const roots = res ? childrenOf([]).filter((t) => !q || t.tag.includes(q)) : [];
+
   return (
     <div className="lib-field">
       <div>{f.label}</div>
       {f.help && <p className="muted" style={{ fontSize: 11, margin: "2px 0 4px" }}>{f.help}</p>}
+      {rules.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, margin: "2px 0 6px" }}>
+          {rules.map((r) => (
+            <button key={ruleKey(r)} type="button" className={unknown.includes(r) ? "danger" : ""} style={{ fontSize: 12, padding: "2px 8px" }} title={unknown.includes(r) ? "No filler item has all of these — click to remove" : "Click to remove"}
+              onClick={() => toggle(r.map((t) => t.toLowerCase()))}>{r.map((t) => display.get(t.toLowerCase()) ?? t).join(" › ")} ✕</button>
+          ))}
+        </div>
+      )}
       {!src ? <span className="muted" style={{ fontSize: 12 }}>Pick filler libraries or a filler collection above to see their tags.</span>
         : !res ? <span className="muted" style={{ fontSize: 12 }}>Looking up tags…</span>
         : res.error ? <span className="err" style={{ fontSize: 12 }}>{res.error}</span>
-        : found.length === 0 ? <span className="muted" style={{ fontSize: 12 }}>None of the {res.items.toLocaleString()} filler items have tags. Add tags to them (in the files' metadata, then rescan) to use this.</span>
+        : !res.combos ? <span className="muted" style={{ fontSize: 12 }}>Restart the scheduler to see the tag tree.</span>
+        : display.size === 0 ? <span className="muted" style={{ fontSize: 12 }}>None of the {res.items.toLocaleString()} filler items have tags. Add tags to them (in the files' metadata, then rescan) to use this.</span>
         : <>
-          {found.length > 12 && <input placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 240, fontSize: 12, marginBottom: 4 }} />}
-          <div className="lib-checks" style={{ maxHeight: 180, overflow: "auto" }}>
-            {shown.map((t) => (
-              <label key={t.tag} className="switch"><input type="checkbox" checked={sel.has(t.tag.toLowerCase())} onChange={() => toggle(t.tag)} /> {t.tag} <span className="muted" style={{ fontSize: 11 }}>({t.count.toLocaleString()})</span></label>
-            ))}
+          {display.size > 12 && <input placeholder="Filter tags…" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ maxWidth: 240, fontSize: 12, marginBottom: 4 }} />}
+          <div className="tag-tree">
+            {roots.map((t) => <Node key={t.tag} path={[t.tag]} tag={t.tag} count={t.count} depth={0} />)}
+            {roots.length === 0 && <span className="muted" style={{ fontSize: 12 }}>No tag matches “{filter}”.</span>}
           </div>
           <span className="muted" style={{ fontSize: 11 }}>
-            {value.length ? `Breaks draw from up to ${picked.toLocaleString()} of ${res.items.toLocaleString()} filler items.` : `${res.items.toLocaleString()} filler items, ${found.length} tags.`}
+            {rules.length ? `Breaks draw from ${matchedBy(rules).toLocaleString()} of ${res.items.toLocaleString()} filler items.` : `${res.items.toLocaleString()} filler items.`}
+            {universal.length > 0 && ` On every item (so not listed): ${universal.map((t) => display.get(t)).join(", ")}.`}
           </span>
         </>}
-      {res && !res.error && missing.length > 0 && (
-        <div style={{ fontSize: 12, marginTop: 4 }}>
-          <span className="err">Not on any of this filler: </span>
-          {missing.map((t) => <button key={t} type="button" style={{ fontSize: 11, padding: "1px 6px", marginLeft: 4 }} title="Remove" onClick={() => toggle(t)}>{t} ✕</button>)}
-        </div>
-      )}
     </div>
   );
 }
