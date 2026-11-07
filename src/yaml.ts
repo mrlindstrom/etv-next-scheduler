@@ -53,7 +53,7 @@ export type Instruction =
   // block, so the next programme starts as the card ends (see engine "up_next")
   | { op: "up_next"; theme?: string; count?: number; duration?: string; afterProgram?: boolean }
   | { op: "count"; content: string; count: number; fillerKind?: FillerKind; customTitle?: string; fitMinutes?: number; fitDiscard?: boolean }
-  | { op: "duration"; content: string; duration: string; trim?: boolean; discardAttempts?: number; fillerKind?: FillerKind; fallback?: string; stopBeforeEnd?: boolean; offlineTail?: boolean; breakSequence?: string }
+  | { op: "duration"; content: string; duration: string; trim?: boolean; discardAttempts?: number; fillerKind?: FillerKind; fallback?: string; stopBeforeEnd?: boolean; offlineTail?: boolean; breakSequence?: string; tail?: string /* filler for what the items leave of the duration (legacy tail filler) */ }
   | { op: "pad_to_next"; content: string; minutes: number; trim?: boolean; fillerKind?: FillerKind; fallback?: string; discardAttempts?: number; stopBeforeEnd?: boolean; offlineTail?: boolean }
   | { op: "pad_until"; content: string; when: string; tomorrow?: boolean; trim?: boolean; fillerKind?: FillerKind; fallback?: string }
   | { op: "mid_roll"; enabled: boolean; sequence?: string; pod?: string; expression?: string;

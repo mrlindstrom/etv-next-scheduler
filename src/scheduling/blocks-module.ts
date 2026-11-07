@@ -34,6 +34,13 @@ interface Block {
   adCount?: number;                // items per break (instead of a target length)
   adTags?: NonNullable<ContentDef["tags"]>;  // mid-roll: only filler matching a rule (a tag, or a path of tags all on the item)
   padCollection?: string;          // clock-alignment padding (legacy post-roll "pad")
+  // end-of-block filler: "" = the filler libraries / padCollection, when aligned (as before);
+  // "midroll" = the mid-roll breaks' pool (with their tags); "custom" = tailLibraries + tailTags;
+  // "collection" = padCollection; "none" = only the fallback. A choice also fills the rest of a
+  // "Play N minutes" block.
+  tailFrom?: "" | "midroll" | "custom" | "collection" | "none";
+  tailLibraries?: string[];
+  tailTags?: NonNullable<ContentDef["tags"]>;
   fallbackCollection?: string;     // fills whatever the padding couldn't
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
   upNext?: boolean;                // up-next card after the block when it isn't padded (back-to-back)
@@ -82,7 +89,19 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
       if (adKey === fillerKey) { adKey = `b${i}_mid`; content.push({ ...contentDef(adKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"), tags: adTags }); }
       else { const d = content.find((c) => c.key === adKey); if (d) d.tags = adTags; }
     }
-    const padKey = roleKey("pad", b.padCollection);
+    // end-of-block filler (after a "Play N minutes" block's items, and the padding to
+    // the clock): by default the filler libraries / clock-alignment collection, as before
+    const tailFrom = b.tailFrom ?? "";
+    let padKey: string | null;
+    if (tailFrom === "none") padKey = null;
+    else if (tailFrom === "midroll") padKey = adKey ?? roleKey("pad", undefined);
+    else if (tailFrom === "custom") {
+      const libs = (b.tailLibraries ?? []).filter(Boolean);
+      const tailTags = (b.tailTags ?? []).filter(Boolean);
+      const useLibs = libs.length ? libs : fillerLibs;
+      padKey = useLibs.length ? `b${i}_pad` : null;
+      if (padKey) content.push({ ...contentDef(padKey, "search", `library_name:(${fillLibsQuery(useLibs)})`, "shuffle"), ...(tailTags.length ? { tags: tailTags } : {}) });
+    } else padKey = roleKey("pad", b.padCollection);
     const fallbackKey = b.fallbackCollection ? roleKey("fallback", b.fallbackCollection) ?? undefined : undefined;
 
     // per-block mid-roll ad breaks: N items per break, or filled to a target length
@@ -115,19 +134,23 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     const grouped = b.inGuide !== false;
     if (grouped) playout.push({ op: "epg_group", value: true });
     if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined });
-    else if (b.fill === "duration") playout.push({ op: "duration", content: key, duration: `${Math.max(1, b.minutes ?? 30)} minutes`, fallback: fallbackKey });
+    // a chosen end-of-block filler also fills what's left of a "Play N minutes" block
+    else if (b.fill === "duration") playout.push({ op: "duration", content: key, duration: `${Math.max(1, b.minutes ?? 30)} minutes`, fallback: fallbackKey, tail: tailFrom && padKey ? padKey : undefined });
     else playout.push({ op: "pad_until", content: key, when: "00:00", tomorrow: true }); // flood to end of day
     if (b.preRoll) playout.push({ op: "pre_roll_off" });
 
     // clock alignment: pad the block's end to the next barrier using the filler.
     // (The next block therefore starts exactly on a barrier.)
-    const padded = barrier > 0 && !!padKey && b.fill !== "flood";
+    // "Nothing" as the end-of-block filler still aligns, with the fallback alone.
+    const padWith = padKey ?? (tailFrom === "none" ? fallbackKey ?? null : null);
+    const padded = barrier > 0 && !!padWith && b.fill !== "flood";
     if (padded) {
       if (adKey) playout.push({ op: "mid_roll", enabled: false }); // don't break the pad filler
       // Without fallback, trim the final filler item so the block ends exactly on
       // the barrier. With fallback (legacy), whole filler items play and the
       // fallback content covers — and is trimmed to — whatever gap remains.
-      playout.push({ op: "pad_to_next", content: padKey!, minutes: barrier, fillerKind: b.padCollection ? "postroll" : "tail", trim: !fallbackKey, fallback: fallbackKey });
+      if (!padKey) playout.push({ op: "pad_to_next", content: padWith!, minutes: barrier, fillerKind: "fallback", trim: true });
+      else playout.push({ op: "pad_to_next", content: padKey, minutes: barrier, fillerKind: b.padCollection && (tailFrom === "" || tailFrom === "collection") ? "postroll" : "tail", trim: !fallbackKey, fallback: fallbackKey });
     }
     // Padded blocks get the card at the start of their padding automatically; a
     // back-to-back block can ask for one straight after it (inside its guide
@@ -183,7 +206,21 @@ const SCHEMA: Field[] = [
         help: "The filler's tags, laid out like its folders. Tick a tag to play what's tagged with it (PSA); untick one under it to leave that out (PSA AND NOT Christmas); tick several and breaks mix them. Nothing ticked = any filler. Clock-alignment padding still uses all of it." },
       { type: "collection", key: "preRoll", label: "Pre-roll collection (optional)", help: "Play items from this collection before each program." },
       { type: "number", key: "preRollCount", label: "Pre-roll items", default: 1, min: 1 },
-      { type: "collection", key: "padCollection", label: "Clock-alignment filler collection (optional)", help: "Pad to the clock barrier from this collection instead of the filler libraries (legacy post-roll pad)." },
+      {
+        type: "select", key: "tailFrom", label: "End-of-block filler (after the show)", default: "",
+        help: "What fills the rest of the block after its show: the time left in a 'Play N minutes' block, and the padding up to the clock mark. Whole items play; the fallback filler covers any last gap.",
+        options: [
+          { value: "", label: "Default: the filler libraries (when aligned to the clock)" },
+          { value: "midroll", label: "Same as the mid-roll breaks (their libraries / collection and tags)" },
+          { value: "custom", label: "Its own libraries and tags" },
+          { value: "collection", label: "A collection" },
+          { value: "none", label: "Nothing — only the fallback filler" },
+        ],
+      },
+      { type: "libraries", key: "tailLibraries", label: "End-of-block filler libraries", help: "None ticked = the filler libraries above.", showIf: { key: "tailFrom", equals: "custom" } },
+      { type: "tags", key: "tailTags", label: "Only end-of-block filler with these tags (optional)", libraries: "tailLibraries", showIf: { key: "tailFrom", equals: "custom" },
+        help: "Tick a tag to play what's tagged with it; untick one under it to leave that out (adds a NOT). Nothing ticked = all of these libraries." },
+      { type: "collection", key: "padCollection", label: "End-of-block filler collection", help: "Fill the end of the block from this collection (legacy post-roll pad).", showIf: { key: "tailFrom", equals: ["", "collection"] } },
       { type: "checkbox", key: "alignFit", label: "Aligned: keep ad breaks inside each show's slot", default: true, help: "Shows of any length are aligned: a show longer than the slot takes as many as it needs (a 44-minute show fills an hour on a half-hour grid). Off = breaks aren't budgeted to the slot and can push the show past the next mark (legacy behavior)." },
       { type: "checkbox", key: "upNext", label: "Show the up-next card after this block", help: "For blocks that aren't aligned to the clock: the card plays right after the block, then the next item starts. Aligned blocks already show it at the start of their padding. Uses the channel's up-next theme (Channels page) and needs up-next cards turned on (Streaming page).", showIf: { key: "align", equals: ["0", ""] } },
       { type: "collection", key: "fallbackCollection", label: "Fallback filler collection (optional)", help: "Covers any gap the padding can't fill exactly; its last item is trimmed." },

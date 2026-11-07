@@ -426,6 +426,14 @@ export class SchedulingEngine {
   private async execDuration(ins: Extract<Instruction, { op: "duration" }>): Promise<void> {
     const targetMs = this.nowMs + parseDurationMs(ins.duration);
     await this.fillUntil(ins.content, targetMs, { fillerKind: ins.fillerKind }, ins.trim ?? false, ins.discardAttempts ?? 0, ins.breakSequence);
+    // tail filler (legacy TailFiller): whole items for what's left, with no mid-roll
+    // breaks inside them; trimmed to the end when there's no fallback to cover the rest
+    if (ins.tail && targetMs - this.nowMs >= 1000 && !this.done()) {
+      const mr = this.midRoll;
+      this.midRoll = null;
+      try { await this.fillUntil(ins.tail, targetMs, { fillerKind: "tail" }, !ins.fallback, 0); }
+      finally { this.midRoll = mr; }
+    }
     await this.fillFallback(ins.fallback, targetMs);
   }
 
