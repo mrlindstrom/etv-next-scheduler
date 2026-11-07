@@ -117,6 +117,12 @@ export function nextTimeOfDay(nowMs: number, when: string, tz: Tz, allowNow = fa
 
 /** Next epoch-ms after now that lands on a local N-minute boundary (counted from
  *  local midnight). In a fall-back hour, the repeated :00/:30 marks count again. */
+/** Is this moment exactly on a mark (:00 / :30 … for `minutes` = 30), to the second? */
+export function onMinuteBoundary(nowMs: number, minutes: number, tz: Tz): boolean {
+  if (!(minutes > 0)) return false;
+  return localParts(Math.round(nowMs / 1000) * 1000, tz).msOfDay % (minutes * 60000) === 0;
+}
+
 export function nextMinuteBoundary(nowMs: number, minutes: number, tz: Tz): number {
   const stepMs = minutes * 60000;
   const p = localParts(nowMs, tz);

@@ -19,7 +19,7 @@ type Cursor = Enumerator | PlaylistEnumerator;
 import { groupSegments } from "./segments.js";
 import { evalExpression } from "./expr.js";
 import {
-  parseDurationMs, formatRfc3339, nextTimeOfDay, nextMinuteBoundary, localParts, localToEpoch,
+  parseDurationMs, formatRfc3339, nextTimeOfDay, nextMinuteBoundary, onMinuteBoundary, localParts, localToEpoch,
   localWeekday, floorLocalMidnight, localToEpochAll, type Tz } from "./time.js";
 import type { Daypart, DateSpec, DateRange } from "./yaml.js";
 import { holidayDate } from "./holidays.js";
@@ -329,7 +329,11 @@ export class SchedulingEngine {
       case "pod": await this.executePod(ins.pod); break;
       case "count": await this.execCount(ins.content, ins.count, { fillerKind: ins.fillerKind }, ins.fitMinutes, ins.fitDiscard); break;
       case "duration": await this.execDuration(ins); break;
-      case "pad_to_next": await this.execPad(ins.content, nextMinuteBoundary(this.nowMs, ins.minutes, this.opts.tz), { fillerKind: ins.fillerKind }, ins.trim ?? false, ins.discardAttempts ?? 0, true, ins.fallback); break;
+      case "pad_to_next":
+        // already on a mark (a "Play 30 minutes" block that filled itself exactly): nothing
+        // to pad — "the next mark" would otherwise be a whole slot away
+        if (onMinuteBoundary(this.nowMs, ins.minutes, this.opts.tz)) break;
+        await this.execPad(ins.content, nextMinuteBoundary(this.nowMs, ins.minutes, this.opts.tz), { fillerKind: ins.fillerKind }, ins.trim ?? false, ins.discardAttempts ?? 0, true, ins.fallback); break;
       case "pad_until": await this.execPad(ins.content, nextTimeOfDay(this.nowMs, ins.when, this.opts.tz, false), { fillerKind: ins.fillerKind }, ins.trim ?? false, 0, true, ins.fallback); break;
       case "skip_items": { const e = await this.enumerator(ins.content); for (let i = 0; i < ins.count; i++) e.next(); break; }
       case "skip_to_item": { const e = await this.enumerator(ins.content); this.skipTo(e, ins.season, ins.episode); break; }
