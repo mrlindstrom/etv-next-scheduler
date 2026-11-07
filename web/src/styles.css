@@ -148,6 +148,16 @@ code { background: var(--input); border: 1px solid var(--line); padding: 1px 5px
 .media-card:hover .mc-add, .mc-add:focus-visible, .coll-menu-wrap.open .mc-add { opacity: 1; }
 .mc-add:hover { background: var(--accent); border-color: var(--accent); }
 @media (hover: none) { .mc-add { opacity: .85; } } /* touch: no hover, keep it visible */
+/* select circle on a collection's posters (top-left): shown on hover, always once anything is selected */
+.mc-select { position: absolute; top: 6px; left: 6px; z-index: 5; width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  background: rgba(11, 15, 23, .85); border: 2px solid var(--text); color: transparent; font-size: 14px; font-weight: 700; line-height: 1;
+  opacity: 0; transition: opacity .12s; }
+.media-card:hover .mc-select, .mc-select:focus-visible, .card-grid.selecting .mc-select { opacity: 1; }
+.mc-select.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.media-card.selected .poster { outline: 3px solid var(--accent); outline-offset: 2px; }
+@media (hover: none) { .mc-select { opacity: .85; } }
+.select-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel2); }
 .coll-menu { position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; width: 240px; cursor: default;
   background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
 .coll-menu-wrap.inline .coll-menu { left: 0; right: auto; }

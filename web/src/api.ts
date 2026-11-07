@@ -241,7 +241,11 @@ export const api = {
   collectionMembership: (itemId: number): Promise<{ id: number; name: string }[]> => fetch(`/api/collections/membership/${itemId}`).then(j),
   addToCollection: (collectionId: number, itemId: number): Promise<{ ok?: boolean; error?: string }> => fetch(`/api/collections/collection/${collectionId}/items`, opts("POST", { itemId })).then(j),
   removeFromCollection: (collectionId: number, itemId: number): Promise<{ ok?: boolean }> => fetch(`/api/collections/collection/${collectionId}/items/${itemId}`, opts("DELETE")).then(j),
-  updateCollection: (type: string, id: number, patch: { name?: string; query?: string }): Promise<{ ok: boolean }> => fetch(`/api/collections/${type}/${id}`, opts("PUT", patch)).then(j),
+  updateCollection: (type: string, id: number, patch: { name?: string; query?: string }): Promise<{ ok: boolean; channels?: string[] }> => fetch(`/api/collections/${type}/${id}`, opts("PUT", patch)).then(j),
+  collectionUsage: (type: string, id: number): Promise<{ channels: string[]; library: string[] }> => fetch(`/api/collections/${type}/${id}/usage`).then(j),
+  multiMembers: (id: number): Promise<MultiMember[]> => fetch(`/api/collections/multi/${id}/members`).then(j),
+  addMultiMember: (id: number, m: { type: "collection" | "smart"; id: number }): Promise<{ ok?: boolean; error?: string }> => fetch(`/api/collections/multi/${id}/members`, opts("POST", m)).then(j),
+  removeMultiMember: (id: number, m: { type: "collection" | "smart"; id: number }): Promise<{ ok?: boolean }> => fetch(`/api/collections/multi/${id}/members/${m.type}/${m.id}`, opts("DELETE")).then(j),
   deleteCollection: (type: string, id: number): Promise<{ ok: boolean }> => fetch(`/api/collections/${type}/${id}`, opts("DELETE")).then(j),
   playlist: (id: number): Promise<PlaylistDetail | { error: string }> => fetch(`/api/playlists/${id}`).then(j),
   addPlaylistEntry: (id: number, ref: PlaylistRef): Promise<{ id?: number; error?: string }> => fetch(`/api/playlists/${id}/entries`, opts("POST", ref)).then(j),
@@ -316,6 +320,7 @@ export interface ContentSource {
   order?: "chronological" | "shuffle";
 }
 export interface CollectionInfo { type: "collection" | "smart" | "multi" | "playlist"; id: number; name: string; group?: string; query?: string; count?: number | null; }
+export interface MultiMember { type: "collection" | "smart"; id: number; name: string; count: number | null; }
 export interface Pod { id: string; name: string; type: PodType; config: any; updatedAt?: string; }
 export interface PodPreview {
   yaml?: string; entryKey?: string; error?: string; warning?: string;

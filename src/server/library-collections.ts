@@ -208,6 +208,64 @@ export function deleteCollection(dbPath: string, type: CollectionType, id: numbe
 }
 
 
+// ---- multi-collections: a set of manual and smart collections played as one ----
+
+export interface MultiMember { type: "collection" | "smart"; id: number; name: string; count: number | null }
+
+/** The collections and smart collections a multi-collection is made of. */
+export function multiMembers(dbPath: string, multiId: number): MultiMember[] {
+  const db = openRO(dbPath);
+  try {
+    const out: MultiMember[] = (db.prepare(`SELECT c.Id id, c.Name name, (SELECT COUNT(*) FROM CollectionItem ci WHERE ci.CollectionId=c.Id) n
+      FROM MultiCollectionItem mi JOIN Collection c ON c.Id=mi.CollectionId WHERE mi.MultiCollectionId=? ORDER BY c.Name`).all(multiId) as any[])
+      .map((r) => ({ type: "collection" as const, id: r.id, name: r.name ?? "(unnamed)", count: r.n }));
+    if (has(db, "MultiCollectionSmartItem")) {
+      for (const r of db.prepare(`SELECT s.Id id, s.Name name FROM MultiCollectionSmartItem ms JOIN SmartCollection s ON s.Id=ms.SmartCollectionId
+        WHERE ms.MultiCollectionId=? ORDER BY s.Name`).all(multiId) as any[]) out.push({ type: "smart", id: r.id, name: r.name ?? "(unnamed)", count: null });
+    }
+    return out;
+  } finally { db.close(); }
+}
+
+/** Add a collection or smart collection to a multi-collection (no-op if it's already in). */
+export function addMultiMember(dbPath: string, multiId: number, member: { type: "collection" | "smart"; id: number }): void {
+  const db = openRW(dbPath);
+  try {
+    if (!db.prepare(`SELECT 1 FROM MultiCollection WHERE Id=?`).get(multiId)) throw new Error(`Multi-collection ${multiId} not found.`);
+    if (member.type === "collection") {
+      if (!db.prepare(`SELECT 1 FROM Collection WHERE Id=?`).get(member.id)) throw new Error(`Collection ${member.id} not found.`);
+      db.prepare(`INSERT OR IGNORE INTO MultiCollectionItem (MultiCollectionId, CollectionId, ScheduleAsGroup, PlaybackOrder) VALUES (?,?,0,1)`).run(multiId, member.id);
+    } else {
+      if (!db.prepare(`SELECT 1 FROM SmartCollection WHERE Id=?`).get(member.id)) throw new Error(`Smart collection ${member.id} not found.`);
+      db.prepare(`INSERT OR IGNORE INTO MultiCollectionSmartItem (MultiCollectionId, SmartCollectionId, ScheduleAsGroup, PlaybackOrder) VALUES (?,?,0,1)`).run(multiId, member.id);
+    }
+    checkpoint(db);
+  } finally { db.close(); }
+}
+
+export function removeMultiMember(dbPath: string, multiId: number, member: { type: "collection" | "smart"; id: number }): void {
+  const db = openRW(dbPath);
+  try {
+    if (member.type === "collection") db.prepare(`DELETE FROM MultiCollectionItem WHERE MultiCollectionId=? AND CollectionId=?`).run(multiId, member.id);
+    else db.prepare(`DELETE FROM MultiCollectionSmartItem WHERE MultiCollectionId=? AND SmartCollectionId=?`).run(multiId, member.id);
+    checkpoint(db);
+  } finally { db.close(); }
+}
+
+/** Where a collection is used inside the library: multi-collections and playlists that include it. */
+export function collectionUsedBy(dbPath: string, type: CollectionType, id: number): string[] {
+  const db = openRO(dbPath);
+  try {
+    const out: string[] = [];
+    const q = (sql: string, label: string) => { try { for (const r of db.prepare(sql).all(id) as any[]) out.push(`${label} "${r.name}"`); } catch { /* older schema */ } };
+    if (type === "collection") q(`SELECT DISTINCT m.Name name FROM MultiCollectionItem mi JOIN MultiCollection m ON m.Id=mi.MultiCollectionId WHERE mi.CollectionId=?`, "multi-collection");
+    if (type === "smart") q(`SELECT DISTINCT m.Name name FROM MultiCollectionSmartItem ms JOIN MultiCollection m ON m.Id=ms.MultiCollectionId WHERE ms.SmartCollectionId=?`, "multi-collection");
+    const col = { collection: "CollectionId", smart: "SmartCollectionId", multi: "MultiCollectionId", playlist: "" }[type];
+    if (col) q(`SELECT DISTINCT p.Name name FROM PlaylistItem pi JOIN Playlist p ON p.Id=pi.PlaylistId WHERE pi.${col}=?`, "playlist");
+    return out;
+  } finally { db.close(); }
+}
+
 // ---- playlists: an ordered list of entries (ErsatzTV legacy PlaylistItem rows) ----
 // Each entry plays a collection / smart / multi-collection, or a show, season or
 // single item, with its own play order and how many items it plays per turn.

@@ -121,6 +121,21 @@ export function Browse() {
     setMakeMsg("");
     navigate("collections", { type: "collection", id: String(r.id) });
   };
+  // add the results shown to a collection that already exists
+  const [manual, setManual] = useState<{ id: number; name: string }[]>([]);
+  useEffect(() => { if (view?.mode === "search") api.collections().then((cs) => setManual(cs.filter((c) => c.type === "collection"))).catch(() => {}); }, [view?.mode]);
+  const addResultsTo = async (id: number) => {
+    const target = manual.find((c) => c.id === id);
+    if (!target) return;
+    const more = (searchInfo?.total ?? 0) > results.length ? ` (the first ${results.length} of ${searchInfo!.total.toLocaleString()} matches)` : "";
+    if (!confirm(`Add these ${results.length} results${more} to "${target.name}"? Items already in it are skipped.`)) return;
+    for (let i = 0; i < results.length; i++) {
+      setMakeMsg(`Adding ${i + 1} of ${results.length}…`);
+      await api.addToCollection(id, results[i].id).catch(() => {});
+    }
+    setMakeMsg("");
+    navigate("collections", { type: "collection", id: String(id) });
+  };
 
   const clickCard = (c: BrowseCard) => {
     if (c.type === "show") return openShow(c);
@@ -160,6 +175,11 @@ export function Browse() {
             {makeMsg && <span className="muted" style={{ fontSize: 12 }}>{makeMsg}</span>}
             <button onClick={saveSmart} title="A smart collection keeps matching this search as your library changes">Save as smart collection</button>
             <button onClick={collectFromResults} title="A regular collection with exactly these items">New collection from these results</button>
+            {manual.length > 0 && <select value="" style={{ width: "auto" }} title="Add these results to a collection you already have"
+              onChange={(e) => { const id = Number(e.target.value); e.target.value = ""; if (id) addResultsTo(id); }}>
+              <option value="">Add to a collection…</option>
+              {manual.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>}
           </span>}
         </div>
 

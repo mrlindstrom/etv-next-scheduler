@@ -27,7 +27,8 @@ import { effectiveDbPath } from "./library-import.js";
 import { listSources, listLibraries, listTrash, emptyTrash, libraryExists, createLocalLibrary, deleteLibrary, deleteSource, listLibraryPaths, addLibraryPath, updateLibraryPath, removeLibraryPath, addRemoteSource, upsertDiscoveredLibraries, listPathReplacements, addPathReplacement, updatePathReplacement, removePathReplacement } from "./library-repo.js";
 import { readSourceInfo, discoverLibraries } from "./scanner-remote.js";
 import { kindCounts, listCards, letterOffsets, listSeasons, listEpisodes, itemDetail, artworkTarget, listShowTitles, isLibraryFile } from "./library-browse.js";
-import { listCollections, collectionItems, createCollection, updateCollection, deleteCollection, collectionsContaining, addToCollection, removeFromCollection, playlistEntries, addPlaylistEntry, updatePlaylistEntry, reorderPlaylist, removePlaylistEntry, playlistsContaining, collectionMeta, type CollectionType } from "./library-collections.js";
+import { listCollections, collectionItems, createCollection, updateCollection, deleteCollection, collectionsContaining, addToCollection, removeFromCollection, playlistEntries, addPlaylistEntry, updatePlaylistEntry, reorderPlaylist, removePlaylistEntry, playlistsContaining, collectionMeta, multiMembers, addMultiMember, removeMultiMember, collectionUsedBy, type CollectionType } from "./library-collections.js";
+import { channelsUsing, renameInChannels } from "./collection-refs.js";
 import { Enumerator, PlaylistEnumerator } from "../resolver.js";
 import { groupSegments } from "../segments.js";
 import { plexCreatePin, plexCheckPin, mediaBrowserLogin } from "./remote-auth.js";
@@ -469,8 +470,35 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (!libraryExists(libDb())) return { error: "Import a library first." };
     const { type, id } = req.params as { type: CollectionType; id: string };
     const b = req.body as any;
+    const before = collectionMeta(libDb(), type, Number(id))?.name;
     updateCollection(libDb(), type, Number(id), { name: b.name, query: b.query });
     indexService.changed(); // a renamed collection changes its members' documents
+    // channels refer to it by name: carry the rename over to them
+    const to = typeof b.name === "string" ? b.name.trim() : undefined;
+    const channels = before && to && to !== before ? await renameInChannels(abs(store.get().channelsDir), type, before, to) : [];
+    return { ok: true, channels };
+  });
+  // what uses a collection: channels (by name) and multi-collections / playlists in the library
+  app.get("/api/collections/:type/:id/usage", async (req) => {
+    if (!libraryExists(libDb())) return { channels: [], library: [] };
+    const { type, id } = req.params as { type: CollectionType; id: string };
+    const name = collectionMeta(libDb(), type, Number(id))?.name;
+    return { channels: name ? await channelsUsing(abs(store.get().channelsDir), type, name) : [], library: collectionUsedBy(libDb(), type, Number(id)) };
+  });
+  // multi-collection members (manual and smart collections)
+  app.get("/api/collections/multi/:id/members", async (req) =>
+    libraryExists(libDb()) ? multiMembers(libDb(), Number((req.params as any).id)) : []);
+  app.post("/api/collections/multi/:id/members", async (req, reply) => {
+    if (!libraryExists(libDb())) return { error: "Import a library first." };
+    const b = req.body as any;
+    if (b?.type !== "collection" && b?.type !== "smart") { reply.code(400); return { error: "type must be collection or smart" }; }
+    try { addMultiMember(libDb(), Number((req.params as any).id), { type: b.type, id: Number(b.id) }); return { ok: true }; }
+    catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  app.delete("/api/collections/multi/:id/members/:type/:memberId", async (req) => {
+    if (!libraryExists(libDb())) return { error: "Import a library first." };
+    const p = req.params as { id: string; type: string; memberId: string };
+    removeMultiMember(libDb(), Number(p.id), { type: p.type === "smart" ? "smart" : "collection", id: Number(p.memberId) });
     return { ok: true };
   });
   app.delete("/api/collections/:type/:id", async (req) => {
