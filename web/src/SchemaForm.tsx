@@ -31,7 +31,8 @@ function FieldView({ f, value, group, onChange }: { f: SchemaField; value: any; 
   if (f.type === "channel") return <ChannelField f={f} value={value} onChange={onChange} />;
   if (f.type === "overlays") return <label>{f.label}<OverlayPicker value={Array.isArray(value) ? value : []} onChange={onChange} />{f.help && <span className="muted" style={{ fontSize: 12 }}>{f.help}</span>}</label>;
   if (f.type === "checkbox")
-    return <label className="switch"><input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} /> {f.label}{f.help && <span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>{f.help}</span>}</label>;
+    // unset shows the default (what the build uses), e.g. "keep breaks inside the slot" = on
+    return <label className="switch"><input type="checkbox" checked={value ?? f.default ?? false} onChange={(e) => onChange(e.target.checked)} /> {f.label}{f.help && <span className="muted" style={{ marginLeft: 6, fontSize: 11 }}>{f.help}</span>}</label>;
   if (f.type === "select")
     return <label>{f.label}<select value={value ?? f.default ?? ""} onChange={(e) => onChange(e.target.value)}>{f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>{f.help && <span className="muted" style={{ fontSize: 11 }}>{f.help}</span>}</label>;
   if (f.type === "number")

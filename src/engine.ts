@@ -97,6 +97,9 @@ export class SchedulingEngine {
   private inMidRollBreak = false;
   private lastPlayed = new Map<string, number>(); // item id -> wall-clock ms last aired (no-repeat)
   private slotEndMs: number | null = null; // wall-clock deadline for the current block (grid slot)
+  /** Aligned count with stretchBreaks: one slot's length. A show longer than this (it
+   *  takes two or more slots) spreads the spare time through its breaks. */
+  private stretchUnitMs: number | null = null;
   private currentShowTitle: string | undefined; // the airing program's show title (for ${show_title} bumpers)
   private currentShowYear: number | undefined;  // the airing program's year (for era-matched filler)
   private groupDepth = 0;
@@ -327,7 +330,13 @@ export class SchedulingEngine {
         } : null;
         break;
       case "pod": await this.executePod(ins.pod); break;
-      case "count": await this.execCount(ins.content, ins.count, { fillerKind: ins.fillerKind }, ins.fitMinutes, ins.fitDiscard); break;
+      case "count": {
+        const prevStretch = this.stretchUnitMs;
+        this.stretchUnitMs = ins.stretchBreaks && ins.fitMinutes ? ins.fitMinutes * 60_000 : null;
+        try { await this.execCount(ins.content, ins.count, { fillerKind: ins.fillerKind }, ins.fitMinutes, ins.fitDiscard); }
+        finally { this.stretchUnitMs = prevStretch; }
+        break;
+      }
       case "duration": await this.execDuration(ins); break;
       case "pad_to_next":
         // already on a mark (a "Play 30 minutes" block that filled itself exactly): nothing
@@ -615,6 +624,10 @@ export class SchedulingEngine {
     let estBreakMs = 120_000; // typical break; refined from the first real break
     let segStart = 0, lastFillerSec = 0, count = 0;
     const fillPod = mr.pod && this.doc.pods[mr.pod]?.target ? mr.pod : undefined;
+    // A show longer than one slot (a 35-minute episode on a half-hour grid takes the
+    // hour): its breaks grow past their usual length so the spare time is shared
+    // between them and the padding after the show, rather than all landing at the end.
+    const stretch = !!fillPod && this.slotEndMs != null && this.stretchUnitMs != null && dur > this.stretchUnitMs;
     for (let k = 0; k < points.length; k++) {
       const bp = points[k];
       const pointSec = bp / 1000;
@@ -633,17 +646,18 @@ export class SchedulingEngine {
       // evenly (each at most its target), so a long show gets shorter breaks
       // rather than running into the next slot; fixed breaks are skipped once
       // the next one won't fit.
-      let maxBreakMs: number | undefined;
+      let maxBreakMs: number | undefined, wantBreakMs: number | undefined;
       if (this.slotEndMs != null) {
         const room = this.slotEndMs - this.nowMs - (dur - segStart) - RESERVE_MS;
         if (fillPod) {
           maxBreakMs = room / (points.length - k);
           if (maxBreakMs < 30_000) break; // not even 30 s per break left
+          if (stretch) wantBreakMs = room / (points.length - k + 1); // this break's share (the padding gets one too)
         } else if (room < estBreakMs) break; // no room for any more breaks
       }
       await this.addSimple(item, segStart, bp, opts);              // episode segment
       const beforeBreak = this.nowMs, breakStart = this.items.length;
-      if (mr.pod) await this.executePod(mr.pod, maxBreakMs);       // pod-built break
+      if (mr.pod) await this.executePod(mr.pod, maxBreakMs, wantBreakMs); // pod-built break
       else if (mr.sequence) {                                      // fixed sequence break
         this.inMidRollBreak = true;
         try { await this.execSequence(mr.sequence); } finally { this.inMidRollBreak = false; }
@@ -671,12 +685,14 @@ export class SchedulingEngine {
   }
 
   /** `maxMs` caps a filled break below its target (exactly — no tolerance) when
-   *  the slot has less room. */
-  private async executePod(podKey: string, maxMs?: number): Promise<void> {
+   *  the slot has less room; `wantMs` lengthens it past its target (a long show's
+   *  stretched breaks), never beyond `maxMs`. */
+  private async executePod(podKey: string, maxMs?: number, wantMs?: number): Promise<void> {
     const pod = this.doc.pods[podKey];
     if (!pod) throw new Error(`Pod not found: ${podKey}`);
     let targetMs = pod.target ? parseDurationMs(pod.target) : undefined;
     let tolMs = pod.tolerance ? parseDurationMs(pod.tolerance) : 3000;
+    if (targetMs != null && wantMs != null && wantMs > targetMs) targetMs = maxMs != null ? Math.min(wantMs, maxMs) : wantMs;
     if (targetMs != null && maxMs != null && maxMs < targetMs) { targetMs = maxMs; tolMs = 0; }
 
     // Phase A: select fixed (count) slots; remember durations to reserve budget.

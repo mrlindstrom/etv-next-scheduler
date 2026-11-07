@@ -43,6 +43,7 @@ interface Block {
   tailTags?: NonNullable<ContentDef["tags"]>;
   fallbackCollection?: string;     // fills whatever the padding couldn't
   alignFit?: boolean;              // aligned blocks budget mid-roll breaks to the item's slot (default true)
+  stretchBreaks?: boolean;         // ...and a show longer than one slot spreads the spare time through its breaks (default true)
   upNext?: boolean;                // up-next card after the block when it isn't padded (back-to-back)
   overlays?: string[];             // overlays (library ids) shown during this block, on top of the channel's own
   inGuide?: boolean;               // false = plays like filler, with no guide entry of its own (legacy guide mode "filler")
@@ -133,7 +134,7 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     // next barrier after it finishes.
     const grouped = b.inGuide !== false;
     if (grouped) playout.push({ op: "epg_group", value: true });
-    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined });
+    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined, stretchBreaks: b.stretchBreaks !== false });
     // a chosen end-of-block filler also fills what's left of a "Play N minutes" block
     else if (b.fill === "duration") playout.push({ op: "duration", content: key, duration: `${Math.max(1, b.minutes ?? 30)} minutes`, fallback: fallbackKey, tail: tailFrom && padKey ? padKey : undefined });
     else playout.push({ op: "pad_until", content: key, when: "00:00", tomorrow: true }); // flood to end of day
@@ -222,6 +223,8 @@ const SCHEMA: Field[] = [
         help: "Tick a tag to play what's tagged with it; untick one under it to leave that out (adds a NOT). Nothing ticked = all of these libraries." },
       { type: "collection", key: "padCollection", label: "End-of-block filler collection", help: "Fill the end of the block from this collection (legacy post-roll pad).", showIf: { key: "tailFrom", equals: ["", "collection"] } },
       { type: "checkbox", key: "alignFit", label: "Aligned: keep ad breaks inside each show's slot", default: true, help: "Shows of any length are aligned: a show longer than the slot takes as many as it needs (a 44-minute show fills an hour on a half-hour grid). Off = breaks aren't budgeted to the slot and can push the show past the next mark (legacy behavior)." },
+      { type: "checkbox", key: "stretchBreaks", label: "Aligned: shows that take two slots spread the spare time through their breaks", default: true,
+        help: "A 35-minute episode on a half-hour grid takes the hour. On = its breaks get longer and share the spare time with the gap after it; off = normal-length breaks, then the rest is filler at the end. Needs the setting above and breaks filled to a length." },
       { type: "checkbox", key: "upNext", label: "Show the up-next card after this block", help: "For blocks that aren't aligned to the clock: the card plays right after the block, then the next item starts. Aligned blocks already show it at the start of their padding. Uses the channel's up-next theme (Channels page) and needs up-next cards turned on (Streaming page).", showIf: { key: "align", equals: ["0", ""] } },
       { type: "collection", key: "fallbackCollection", label: "Fallback filler collection (optional)", help: "Covers any gap the padding can't fill exactly; its last item is trimmed." },
       { type: "checkbox", key: "inGuide", label: "Show this block in the guide", default: true, help: "Off = it plays like filler (bumpers, interstitials) with no guide entry of its own." },
