@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="horn" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#fef08a"/>
+    </linearGradient>
+    <g id="head">
+      <path d="M64 196 L70 128 Q66 76 104 60 Q140 48 158 82 L186 112 Q196 130 182 144 Q170 156 150 150 L128 144 Q124 170 132 196 Z"/>
+      <path d="M96 66 L104 30 L122 62 Z"/>
+    </g>
+    <g id="mane">
+      <circle cx="86" cy="54" r="18"/>
+      <circle cx="66" cy="76" r="22"/>
+      <circle cx="54" cy="106" r="22"/>
+      <circle cx="50" cy="138" r="21"/>
+      <circle cx="52" cy="170" r="20"/>
+      <path d="M118 46 L148 4 L134 62 Z"/>
+    </g>
+  </defs>
+  <!-- one outline round the whole sticker, then the fills on top -->
+  <g fill="#7c3aed" stroke="#7c3aed" stroke-width="10" stroke-linejoin="round">
+    <use xlink:href="#mane"/>
+    <use xlink:href="#head"/>
+  </g>
+  <circle cx="86" cy="54" r="18" fill="#f9a8d4"/>
+  <circle cx="66" cy="76" r="22" fill="#c4b5fd"/>
+  <circle cx="54" cy="106" r="22" fill="#93c5fd"/>
+  <circle cx="50" cy="138" r="21" fill="#86efac"/>
+  <circle cx="52" cy="170" r="20" fill="#fde68a"/>
+  <use xlink:href="#head" fill="#ffffff"/>
+  <path d="M103 58 L106 40 L114 57 Z" fill="#fbcfe8"/>
+  <!-- forelock over the brow -->
+  <circle cx="100" cy="68" r="13" fill="#f9a8d4"/>
+  <circle cx="114" cy="62" r="10" fill="#c4b5fd"/>
+  <!-- horn -->
+  <path d="M118 46 L148 4 L134 62 Z" fill="url(#horn)" stroke="#7c3aed" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M124 40 L139 32 M128 28 L142 20" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+  <!-- face -->
+  <circle cx="128" cy="98" r="9" fill="#3b0764"/>
+  <circle cx="131" cy="95" r="3" fill="#ffffff"/>
+  <path d="M120 88 L114 82 M126 86 L123 79" stroke="#3b0764" stroke-width="3" stroke-linecap="round"/>
+  <ellipse cx="146" cy="120" rx="10" ry="7" fill="#f9a8d4" opacity="0.8"/>
+  <circle cx="178" cy="124" r="3.5" fill="#a855f7"/>
+  <path d="M156 138 Q166 146 176 140" fill="none" stroke="#a855f7" stroke-width="3" stroke-linecap="round"/>
+</svg>

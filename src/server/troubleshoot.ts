@@ -611,14 +611,20 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         const outDir = join(dir, "output", "1");
         const pl = await readFile(join(outDir, "ffmpeg.m3u8"), "utf8").catch(() => "");
         let dur = 0, pdt = 0;
+        const windowSec = r.request.kind === "guide" ? r.targetSec + 60 : r.targetSec;
         for (const line of pl.split(/\r?\n/)) {
           const inf = line.match(/^#EXTINF:([\d.]+)/); if (inf) { dur = Number(inf[1]); continue; }
           const t = line.match(/^#EXT-X-PROGRAM-DATE-TIME:(.+)$/); if (t) { pdt = Date.parse(t[1].replace(/([+-]\d{2})(\d{2})$/, "$1:$2")); continue; }
           if (/^live\d+\.ts$/.test(line.trim()) && !segs.has(line.trim()) && dur) {
             const name = line.trim();
-            // only segments of the test item (the lead-in is dropped by time); the
-            // live guide starts several seconds late, so its whole item counts
-            if (pdt >= T0 - 100 && pdt < T0 + (r.request.kind === "guide" ? r.targetSec + 60 : r.targetSec) * 1000) {
+            // only segments of the test item: the lead-in is dropped by time, then
+            // segments count in playlist order until the test's length is in. (Not by
+            // time after that: when next works ahead and starts a second ffmpeg, its
+            // segments' times restart at the wall clock, seconds after the first
+            // ffmpeg's, which put later video in the middle of the test.) The live
+            // guide starts several seconds late, so its whole item counts.
+            const keptSec = [...segs.values()].reduce((a, s) => a + s.durSec, 0);
+            if ((keptSec > 0 || pdt >= T0 - 100) && keptSec < windowSec - 0.5) {
               await copyFile(join(outDir, name), join(dir, "kept", name)).catch(() => {});
               if (existsSync(join(dir, "kept", name))) {
                 segs.set(name, { name, startMs: pdt, durSec: dur, arrivedMs: Date.now(), workAhead: /WorkAhead/.test(sessionState) });
@@ -638,7 +644,8 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
     killTree(child);
 
     // ---- stitch the kept segments into one playable file
-    const kept = [...segs.values()].filter((s) => s.durSec > 0).sort((a, b) => a.startMs - b.startMs);
+    // in playlist order (segment number), not by time: see the poll above
+    const kept = [...segs.values()].filter((s) => s.durSec > 0).sort((a, b) => a.name.localeCompare(b.name));
     const wa = kept.filter((s) => s.workAhead);
     if (wa.length >= 2) { const span = (wa[wa.length - 1].arrivedMs - wa[0].arrivedMs) / 1000; if (span > 0) r.speed = Math.round((wa.slice(1).reduce((a, s) => a + s.durSec, 0) / span) * 10) / 10; }
     if (kept.length) {

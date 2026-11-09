@@ -1,0 +1,169 @@
+{
+  "category": "Up next",
+  "name": "Rainbow up next",
+  "description": "A playful lower third for a kids' channel: a unicorn, a rainbow and sparkles, with the next show and its time.",
+  "timing": {
+    "mode": "end",
+    "offsetSeconds": 90,
+    "showSeconds": 12
+  },
+  "layers": [
+    {
+      "type": "box",
+      "x": 150,
+      "y": 842,
+      "w": 1010,
+      "h": 140,
+      "color": "#ffffff",
+      "opacity": 96,
+      "radius": 70,
+      "border": "#c084fc",
+      "borderWidth": 6,
+      "anim": {
+        "in": { "type": "wipe_left", "duration": 0.5, "delay": 0.1 },
+        "out": { "type": "wipe_left", "duration": 0.4, "delay": 0.3 }
+      }
+    },
+    {
+      "type": "box",
+      "x": 300,
+      "y": 964,
+      "w": 680,
+      "h": 8,
+      "color": "#f472b6",
+      "gradient": { "to": "#60a5fa" },
+      "radius": 4,
+      "anim": {
+        "in": { "type": "wipe_left", "duration": 0.6, "delay": 0.5 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "image",
+      "x": 958,
+      "y": 748,
+      "w": 240,
+      "h": 140,
+      "src": "example:rainbow.svg",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.6, "delay": 0.55 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "image",
+      "x": 80,
+      "y": 788,
+      "w": 220,
+      "h": 220,
+      "src": "example:unicorn.svg",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.6, "delay": 0.3 },
+        "out": { "type": "fade", "duration": 0.25, "delay": 0.1 }
+      }
+    },
+    {
+      "type": "box",
+      "x": 312,
+      "y": 860,
+      "w": 196,
+      "h": 46,
+      "color": "#f472b6",
+      "gradient": { "to": "#a78bfa" },
+      "radius": 23,
+      "anim": {
+        "in": { "type": "pop", "duration": 0.45, "delay": 0.4 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "text",
+      "x": 312,
+      "y": 860,
+      "w": 196,
+      "h": 46,
+      "text": "UP NEXT",
+      "size": 28,
+      "color": "#ffffff",
+      "font": "Comic Sans MS",
+      "bold": true,
+      "align": "center",
+      "valign": "middle",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.45, "delay": 0.4 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "text",
+      "x": 524,
+      "y": 860,
+      "w": 420,
+      "h": 46,
+      "text": "at {{next_start_time}}",
+      "size": 28,
+      "color": "#a855f7",
+      "font": "Comic Sans MS",
+      "bold": true,
+      "valign": "middle",
+      "anim": {
+        "in": { "type": "slide_up", "duration": 0.45, "delay": 0.55, "ease": "snappy" },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "text",
+      "x": 312,
+      "y": 902,
+      "w": 660,
+      "h": 62,
+      "text": "{{next_show}}",
+      "size": 46,
+      "color": "#7c3aed",
+      "font": "Comic Sans MS",
+      "bold": true,
+      "fit": true,
+      "valign": "middle",
+      "anim": {
+        "in": { "type": "slide_up", "duration": 0.45, "delay": 0.45, "ease": "bounce" },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "image",
+      "x": 1150,
+      "y": 870,
+      "w": 46,
+      "h": 46,
+      "src": "example:sparkle.svg",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.5, "delay": 0.7 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "image",
+      "x": 1126,
+      "y": 928,
+      "w": 30,
+      "h": 30,
+      "src": "example:sparkle-pink.svg",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.5, "delay": 0.8 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    },
+    {
+      "type": "image",
+      "x": 268,
+      "y": 826,
+      "w": 34,
+      "h": 34,
+      "src": "example:sparkle-pink.svg",
+      "anim": {
+        "in": { "type": "pop", "duration": 0.5, "delay": 0.75 },
+        "out": { "type": "fade", "duration": 0.25 }
+      }
+    }
+  ]
+}
