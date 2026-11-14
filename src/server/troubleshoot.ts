@@ -457,7 +457,12 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
         const ci = rows.reduce((k, r, i) => (r.epochMs <= s0 + 1000 ? i : k), -1);
         const cur = ci >= 0 ? rows[ci] : undefined;
         const later = rows.slice(ci + 1, ci + 1 + UPCOMING_FIELDS); // next, then the ones after it
-        const guide = [{ startMs: s0, stopMs: s1, item: { id: "0", path: path ?? "", durationMs: s1 - s0, chapters: [], title: "", showTitle: cur?.title ?? "" } as any },
+        // the show's own details from the library (a music video's artist and song aren't in the guide)
+        const info = path ? itemInfo(path) : null;
+        const now = info?.artist
+          ? { title: info.title ?? "", artist: info.artist, kind: "music_video" }
+          : { title: info?.title ?? "", showTitle: info?.showTitle || cur?.title || "" };
+        const guide = [{ startMs: s0, stopMs: s1, item: { id: "0", path: path ?? "", durationMs: s1 - s0, chapters: [], ...now } as any },
           ...later.map((n, k) => ({ startMs: n.epochMs, stopMs: (later[k + 1]?.epochMs ?? n.epochMs + 1800_000), item: { id: String(k + 1), path: "", durationMs: 1800_000, chapters: [], title: "", showTitle: n.title } as any }))];
         const probe: PlayoutItem = { id: "2", start: src.start, finish: src.finish, source: src.source };
         const r = await applyOverlays([probe], new Map([["2", ["__preview"]]]), {}, guide, tz, { ...overlayOptionsFor(store, String(req.channel), root), library: [preview as any] }, undefined, itemInfo);
