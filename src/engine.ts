@@ -552,8 +552,8 @@ export class SchedulingEngine {
     if (from instanceof PlaylistEnumerator && !from.lastInGuide && !opts.fillerKind) opts = { ...opts, fillerKind: "postroll" };
     // anything a fixed mid-roll sequence adds is the break, not the show
     if (this.inMidRollBreak && !opts.fillerKind) opts = { ...opts, fillerKind: "midroll" };
-    // the first program (episode/movie) inside an EPG group defines its guide entry
-    if (this.groupStartMs != null && !this.groupItem && !opts.fillerKind && (item.kind === "episode" || item.kind === "movie")) {
+    // the first program (episode/movie/music video) inside an EPG group defines its guide entry
+    if (this.groupStartMs != null && !this.groupItem && !opts.fillerKind && (item.kind === "episode" || item.kind === "movie" || item.kind === "music_video")) {
       this.groupItem = item;
     }
     // Multi-segment episode (e.g. 1x01 a/b/c): air every segment back-to-back as
@@ -779,7 +779,7 @@ export class SchedulingEngine {
     // Programs are classified by type alone; only interstitials need tags for
     // the preview classifier, so keep the labels sidecar lean by omitting tags
     // on episodes/movies.
-    const isProgram = item.kind === "episode" || item.kind === "movie";
+    const isProgram = item.kind === "episode" || item.kind === "movie" || item.kind === "music_video";
     // Track the currently-airing program's show title so show-relative bumpers
     // (${show_title}) resolve to whatever is actually playing — e.g. when the
     // program is drawn from a collection of many shows.

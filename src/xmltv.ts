@@ -10,6 +10,7 @@
 import { mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { GuideEntry } from "./engine.js";
+import { songTitle } from "./model.js";
 import type { ContentResolver } from "./resolver.js";
 import { offsetAt, localToEpoch, type Tz } from "./time.js";
 
@@ -37,7 +38,8 @@ export function renderChannelXmltv(tvgId: string, entries: GuideEntry[], tz: Tz,
     const it = e.item;
     const start = formatXmltvTime(e.startMs, tz);
     const stop = formatXmltvTime(e.stopMs, tz);
-    const showTitle = it.showTitle && it.showTitle.trim() ? it.showTitle : (it.title ?? "Program");
+    const showTitle = it.showTitle && it.showTitle.trim() ? it.showTitle
+      : it.artist ? `${it.artist} - ${songTitle(it.title ?? "")}` : (it.title ?? "Program");
     const epTitle = it.showTitle && it.title && it.title !== it.showTitle ? it.title : undefined;
     const extras = resolver?.guideExtras ? resolver.guideExtras(it.id) : { genres: [] as string[] };
 

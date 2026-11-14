@@ -21,6 +21,8 @@ import { existsSync, readFileSync, utimesSync, readdirSync, openSync, readSync, 
 import { mkdir, writeFile, rm, rename } from "node:fs/promises";
 import { join, isAbsolute, basename } from "node:path";
 import type { GraphicsLayer, PeriodicTiming, PlayoutItem, WatermarkLocation } from "./model.js";
+import { songTitle } from "./model.js";
+export { songTitle };
 import type { GuideEntry, ItemLabel } from "./engine.js";
 import { formatClock } from "./upnext-ass.js";
 import { localParts, type Tz } from "./time.js";
@@ -133,13 +135,14 @@ const SLOT_DETAILS: { key: string; label: string }[] = [
   { key: "episode_code", label: "Season & episode" }, { key: "season", label: "Season number" },
   { key: "episode", label: "Episode number" }, { key: "year", label: "Year" },
   { key: "kind", label: "Episode or Movie" },
+  { key: "artist", label: "Artist (music videos)" }, { key: "song", label: "Song title (music videos)" },
   { key: "start_time", label: "Start time" }, { key: "end_time", label: "End time" },
 ];
 const SAMPLE_SLOTS: Record<string, string>[] = [
-  { show: "Rugrats", title: "Reptar on Ice", episode_code: "S03E07", season: "3", episode: "7", year: "1994", kind: "Episode", start_time: "7:30 PM", end_time: "8:00 PM" },
-  { show: "Doug", title: "Doug's Big Feat", episode_code: "S01E04", season: "1", episode: "4", year: "1991", kind: "Episode", start_time: "8:00 PM", end_time: "8:30 PM" },
-  { show: "Hey Arnold!", title: "Arnold's Hat", episode_code: "S01E10", season: "1", episode: "10", year: "1996", kind: "Episode", start_time: "8:30 PM", end_time: "9:00 PM" },
-  { show: "Rocko's Modern Life", title: "Trash-O-Madness", episode_code: "S01E03", season: "1", episode: "3", year: "1993", kind: "Episode", start_time: "9:00 PM", end_time: "9:30 PM" },
+  { show: "Rugrats", title: "Reptar on Ice", episode_code: "S03E07", season: "3", episode: "7", year: "1994", kind: "Episode", start_time: "7:30 PM", end_time: "8:00 PM", artist: "Fine Young Cannibals", song: "She Drives Me Crazy" },
+  { show: "Doug", title: "Doug's Big Feat", episode_code: "S01E04", season: "1", episode: "4", year: "1991", kind: "Episode", start_time: "8:00 PM", end_time: "8:30 PM", artist: "Salt-N-Pepa", song: "Push It" },
+  { show: "Hey Arnold!", title: "Arnold's Hat", episode_code: "S01E10", season: "1", episode: "10", year: "1996", kind: "Episode", start_time: "8:30 PM", end_time: "9:00 PM", artist: "Prince", song: "Little Red Corvette" },
+  { show: "Rocko's Modern Life", title: "Trash-O-Madness", episode_code: "S01E03", season: "1", episode: "3", year: "1993", kind: "Episode", start_time: "9:00 PM", end_time: "9:30 PM", artist: "Coldplay", song: "Yellow" },
 ];
 
 /** Template fields an overlay can use, for the designer's help (`slot` groups
@@ -167,6 +170,8 @@ function slotVars(e: GuideEntry | undefined, prefix: string, tz: Tz): OverlayVar
     episode: it?.episodeNumber != null ? String(it.episodeNumber) : "",
     year: it?.year != null ? String(it.year) : "",
     kind: !it ? "" : it.kind === "movie" ? "Movie" : it.kind === "episode" || it.showTitle ? "Episode" : "",
+    artist: it?.artist ?? "",
+    song: it?.artist ? songTitle(it.title ?? "") : "",
     start_time: e ? formatClock(e.startMs, tz) : "",
     end_time: e ? formatClock(e.stopMs, tz) : "",
   };

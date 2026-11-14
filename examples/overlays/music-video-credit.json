@@ -1,0 +1,116 @@
+{
+  "category": "Retro",
+  "name": "Music video credit (early 90s)",
+  "description": "The artist over a see-through blue bar with the song title in yellow quotes and the channel logo at the end, like early-90s European music TV. For music video channels: it uses each video's artist and song title.",
+  "timing": {
+    "mode": "start",
+    "offsetSeconds": 6,
+    "showSeconds": 9
+  },
+  "fadeSeconds": 0.4,
+  "layers": [
+    {
+      "type": "box",
+      "x": 372,
+      "y": 772,
+      "w": 900,
+      "h": 236,
+      "color": "#3434e0",
+      "gradient": {
+        "to": "#2626b8",
+        "dir": "down"
+      },
+      "opacity": 82,
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.4
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 384,
+      "y": 668,
+      "w": 860,
+      "h": 96,
+      "text": "{{artist}}",
+      "size": 72,
+      "color": "#e8e8f0",
+      "font": "Arial",
+      "bold": true,
+      "upper": true,
+      "outline": "#1a1a2a",
+      "outlineWidth": 4,
+      "shadow": true,
+      "fit": true,
+      "valign": "bottom",
+      "appear": {
+        "at": 0.3
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.4
+        }
+      }
+    },
+    {
+      "type": "text",
+      "x": 398,
+      "y": 812,
+      "w": 800,
+      "h": 70,
+      "text": "“{{song}}”",
+      "size": 50,
+      "color": "#fbe85a",
+      "font": "Arial",
+      "bold": true,
+      "upper": true,
+      "outline": "#1c1c1c",
+      "outlineWidth": 4,
+      "shadow": true,
+      "fit": true,
+      "valign": "middle",
+      "appear": {
+        "at": 0.6
+      },
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.3
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.4
+        }
+      }
+    },
+    {
+      "type": "image",
+      "x": 1196,
+      "y": 742,
+      "w": 360,
+      "h": 290,
+      "src": "channel-logo",
+      "anim": {
+        "in": {
+          "type": "fade",
+          "duration": 0.4
+        },
+        "out": {
+          "type": "fade",
+          "duration": 0.4
+        }
+      }
+    }
+  ]
+}

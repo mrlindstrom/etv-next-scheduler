@@ -41,6 +41,8 @@ export interface MediaItem {
   showTitle?: string;   // series title (for episodes)
   plot?: string;        // description
   year?: number;
+  /** music videos: the artist (from its folder, as legacy did; the title is the song) */
+  artist?: string;
   tags?: string[];      // content tags (used to classify interstitials in the preview)
   /** For multi-segment episodes (e.g. `1x01a`, `1x01b`, `1x01c`): the ordered
    *  segment items that make up one logical episode. When set, this item is a
@@ -190,3 +192,13 @@ export const PLAYOUT_VERSION = "https://ersatztv.org/playout/version/0.0.2";
 export const PLAYOUT_VERSION_GRAPHICS = "https://ersatztv.org/playout/version/0.0.4";
 // 0.0.7 adds canvas `layout` (region) — animated overlays (ErsatzTV next 0.2.3+).
 export const PLAYOUT_VERSION_LAYOUT = "https://ersatztv.org/playout/version/0.0.7";
+
+/** A music video's title as a song name: without the "(Official Music Video)",
+ *  "[Lyrics]" or download-id tags file names often carry. */
+export function songTitle(t: string): string {
+  const s = t
+    .replace(/\s*[([][^)\]]*\b(official|music video|video|audio|lyrics?|visuali[sz]er|hd|hq|4k)\b[^)\]]*[)\]]/gi, "")
+    .replace(/\s*\[[A-Za-z0-9_-]{11}\]/g, "")
+    .replace(/\s{2,}/g, " ").trim();
+  return s || t.trim();
+}

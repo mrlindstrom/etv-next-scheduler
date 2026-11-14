@@ -17,8 +17,9 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, unlinkSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
-/** Bump when the document shape or meaning changes: forces a full rebuild. */
-export const INDEX_VERSION = 2;
+/** Bump when the document shape or meaning changes: forces a full rebuild.
+ *  3: music videos carry their artist (from the Artist, i.e. their folder). */
+export const INDEX_VERSION = 3;
 const KEEP_GENERATIONS = 500;   // change-log history kept for catching up
 
 export interface IndexMeta {

@@ -456,6 +456,9 @@ export class SqliteResolver implements ContentResolver {
         ? `sm.Title AS show_title, se.SeasonNumber AS season, md.EpisodeNumber AS episode, sm.Id AS showMetaId`
         : `NULL AS show_title, NULL AS season, NULL AS episode, NULL AS showMetaId`;
       const col = (t: string, c: string, expr = `md.${c}`) => (this.columnExists(t, c) ? expr : "NULL");
+      // a music video's artist lives on its Artist (its folder, as legacy scanned it)
+      const artistCol = kind === "music_video" && this.tableExists("ArtistMetadata") && this.columnExists(k.kindTable, "ArtistId")
+        ? "(SELECT am.Title FROM ArtistMetadata am WHERE am.ArtistId = kt.ArtistId LIMIT 1)" : col(k.metaTable, "Artists");
       const sql = `
         SELECT mi.Id AS id, '${k.type}' AS type, mi.State AS state, mv.Id AS versionId, mv.Duration AS dur,
                mv.Width AS width, mv.Height AS height,
@@ -463,7 +466,7 @@ export class SqliteResolver implements ContentResolver {
                ${col(k.metaTable, "ReleaseDate")} AS aired, ${col(k.metaTable, "Plot")} AS plot,
                ${col(k.metaTable, "Year")} AS year, ${col(k.metaTable, "ContentRating")} AS content_rating,
                ${col(k.metaTable, "MetadataKind")} AS metadata_kind, ${col(k.metaTable, "DateAdded")} AS date_added,
-               ${col(k.metaTable, "Album")} AS album, ${col(k.metaTable, "Artists")} AS artist, ${col(k.metaTable, "AlbumArtists")} AS album_artist,
+               ${col(k.metaTable, "Album")} AS album, ${artistCol} AS artist, ${col(k.metaTable, "AlbumArtists")} AS album_artist,
                lib.Name AS library, lp.LibraryId AS libraryId,
                (SELECT Path FROM MediaFile WHERE MediaVersionId = mv.Id LIMIT 1) AS path,
                ${hasFolderId ? "(SELECT LibraryFolderId FROM MediaFile WHERE MediaVersionId = mv.Id LIMIT 1)" : "NULL"} AS folderId,
@@ -1035,6 +1038,7 @@ export class SqliteResolver implements ContentResolver {
       chapters: this.chapters(r.versionId), title: r.title, kind: r.type,
       season: r.season, episodeNumber: r.episode, aired: r.aired,
       showTitle: r.show_title || undefined, plot: r.plot, year: r.year,
+      ...(r.type === "music_video" && r.artist ? { artist: String(r.artist) } : {}),
       tags: r.tags,
     };
   }
