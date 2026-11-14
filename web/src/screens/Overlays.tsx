@@ -938,7 +938,9 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
       ...pos, display: "flex", flexDirection: "column", justifyContent: l.valign === "bottom" ? "flex-end" : l.valign === "middle" ? "center" : "flex-start",
       textAlign: l.align ?? "left", color: l.color || "#fff", fontFamily: `${l.font || "Arial"}, Arial, sans-serif`, fontSize: size, lineHeight: 1.18,
       fontWeight: l.bold ? 700 : 400, fontStyle: l.italic ? "italic" : "normal", whiteSpace: l.fit ? "pre" : "pre-wrap", overflowWrap: "break-word", opacity: op, pointerEvents: "none",
-      textShadow: l.shadow ? `${size / 16}px ${size / 16}px ${size / 12}px ${l.shadowColor || "#000000"}bf` : undefined,
+      textShadow: !l.shadow ? undefined : l.shadowStyle === "hard"
+        ? `${(l.shadowDistance ?? base / 12) * scale}px ${(l.shadowDistance ?? base / 12) * scale}px 0 ${l.shadowColor || "#000000"}`
+        : `${(l.shadowDistance ?? base / 16) * scale}px ${(l.shadowDistance ?? base / 16) * scale}px ${size / 12}px ${l.shadowColor || "#000000"}bf`,
       WebkitTextStroke: l.outlineWidth ? `${l.outlineWidth * scale}px ${l.outline || "#000"}` : undefined, paintOrder: "stroke fill",
     } as React.CSSProperties}>{text}</div>
   );
@@ -987,6 +989,13 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
             <label className="ov-inline"><input type="checkbox" checked={!!l.upper} onChange={(e) => set({ upper: e.target.checked })} /> ALL CAPS</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.shadow} onChange={(e) => set({ shadow: e.target.checked })} /> Shadow</label>
             {l.shadow && <label className="ov-inline" title="The shadow's colour"><input type="color" value={l.shadowColor || "#000000"} onChange={(e) => set({ shadowColor: e.target.value })} /></label>}
+            {l.shadow && <label className="ov-inline" title="Soft: a blurred drop shadow. Hard: a solid offset copy, like old TV captions.">
+              <select value={l.shadowStyle ?? "soft"} onChange={(e) => set({ shadowStyle: e.target.value as "soft" | "hard" })}><option value="soft">Soft</option><option value="hard">Hard</option></select>
+            </label>}
+            {l.shadow && <label className="ov-inline" title="How far the shadow sits from the text, in pixels (blank: it goes with the text size)">Distance
+              <input type="number" min={0} max={60} style={{ width: 56 }} placeholder={String(Math.round((l.size ?? 48) / (l.shadowStyle === "hard" ? 12 : 16)))} value={l.shadowDistance ?? ""}
+                onChange={(e) => set({ shadowDistance: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value)) })} />
+            </label>}
             <label className="ov-inline" title="Keep it on one line; it gets smaller when a long show name wouldn't fit"><input type="checkbox" checked={!!l.fit} onChange={(e) => set({ fit: e.target.checked })} /> Shrink to fit</label>
           </div>
         </>

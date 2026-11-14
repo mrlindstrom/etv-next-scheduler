@@ -44,6 +44,9 @@ export type OverlayLayer =
       font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean;
       align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom";
       outline?: string; outlineWidth?: number; shadow?: boolean; shadowColor?: string;
+      // soft: a blurred drop shadow; hard: a solid offset copy, like old TV captions.
+      // distance in artboard px (default: a share of the text size)
+      shadowStyle?: "soft" | "hard"; shadowDistance?: number;
       fit?: boolean;   // shrink to fit: keep it on one line, smaller when it's too long for the box
     })
   // gradient: from `color` to `to` ("transparent" = fade the colour out), across or down
@@ -375,7 +378,12 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string, 
       const anchor = l.align === "center" ? "middle" : l.align === "right" ? "end" : "start";
       const tx = l.align === "center" ? l.x + l.w / 2 : l.align === "right" ? l.x + l.w : l.x;
       let filter = "";
-      if (l.shadow) { defs += `<filter id="s${i}" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="${(size / 16).toFixed(1)}" dy="${(size / 16).toFixed(1)}" stdDeviation="${(size / 20).toFixed(1)}" flood-color="${esc(l.shadowColor || "#000000")}" flood-opacity="0.75"/></filter>`; filter = ` filter="url(#s${i})"`; }
+      if (l.shadow) {
+        const hard = l.shadowStyle === "hard";
+        const d = Math.max(0, num(l.shadowDistance, size / (hard ? 12 : 16)));
+        defs += `<filter id="s${i}" x="-20%" y="-20%" width="160%" height="200%"><feDropShadow dx="${d.toFixed(1)}" dy="${d.toFixed(1)}" stdDeviation="${hard ? 0 : (size / 20).toFixed(1)}" flood-color="${esc(l.shadowColor || "#000000")}" flood-opacity="${hard ? 1 : 0.75}"/></filter>`;
+        filter = ` filter="url(#s${i})"`;
+      }
       const ow = num(l.outlineWidth, 0);
       const stroke = ow > 0 ? ` stroke="${esc(l.outline || "#000000")}" stroke-width="${ow}" stroke-linejoin="round" paint-order="stroke"` : "";
       const tspans = lines.map((s, k) => `<tspan x="${tx.toFixed(1)}" y="${(top + k * lh + size * 0.92).toFixed(1)}">${esc(s)}</tspan>`).join("");

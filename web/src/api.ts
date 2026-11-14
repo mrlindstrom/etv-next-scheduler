@@ -22,7 +22,7 @@ export type { LayerAnim } from "../../src/overlay-anim.js";
 interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim; appear?: { at?: number; for?: number } }
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string; fallback?: string })
-  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; shadowColor?: string; fit?: boolean })
+  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; shadowColor?: string; shadowStyle?: "soft" | "hard"; shadowDistance?: number; fit?: boolean })
   | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number; gradient?: { to: string; dir?: "right" | "down" } })
   | (OvBox & { type: "video"; src: string; fallback?: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end" | "media"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number; media?: OverlayMedia }

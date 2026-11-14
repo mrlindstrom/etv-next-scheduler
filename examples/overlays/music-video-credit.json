@@ -45,7 +45,7 @@
       "bold": true,
       "upper": true,
       "outline": "#0f1621",
-      "outlineWidth": 3,
+      "outlineWidth": 2,
       "shadow": true,
       "fit": true,
       "valign": "bottom",
@@ -62,7 +62,9 @@
           "duration": 0.4
         }
       },
-      "shadowColor": "#0f1621"
+      "shadowColor": "#0f1621",
+      "shadowStyle": "hard",
+      "shadowDistance": 5
     },
     {
       "type": "text",
@@ -77,7 +79,7 @@
       "bold": true,
       "upper": true,
       "outline": "#1c120c",
-      "outlineWidth": 4,
+      "outlineWidth": 3,
       "shadow": true,
       "fit": true,
       "valign": "middle",
@@ -94,7 +96,9 @@
           "duration": 0.4
         }
       },
-      "shadowColor": "#1c120c"
+      "shadowColor": "#1c120c",
+      "shadowStyle": "hard",
+      "shadowDistance": 4
     },
     {
       "type": "image",
