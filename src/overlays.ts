@@ -43,7 +43,7 @@ export type OverlayLayer =
       type: "text"; text: string;
       font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean;
       align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom";
-      outline?: string; outlineWidth?: number; shadow?: boolean;
+      outline?: string; outlineWidth?: number; shadow?: boolean; shadowColor?: string;
       fit?: boolean;   // shrink to fit: keep it on one line, smaller when it's too long for the box
     })
   // gradient: from `color` to `to` ("transparent" = fade the colour out), across or down
@@ -290,6 +290,15 @@ function wrap(text: string, width: number, size: number, bold: boolean, font = "
   return out;
 }
 
+/** SVG font attributes for a family as the designer names it: a weight-named family
+ *  ("Barlow Condensed SemiBold") is drawn as its typographic family at that weight,
+ *  and Bold makes it at least 700. */
+function fontAttrs(font: string, bold: boolean, italic: boolean): string {
+  const a = fontAlias(font || "Arial");
+  const w = bold ? Math.max(700, a.weight ?? 0) : a.weight ?? 400;
+  return `font-family="${esc(a.family)}, Arial, sans-serif" font-weight="${w}" font-style="${italic || a.italic ? "italic" : "normal"}"`;
+}
+
 const widths = new Map<string, number>();
 /** A line of text's drawn width in artboard pixels (null until the rasterizer is loaded). */
 function textWidth(t: string, font: string, size: number, bold: boolean, italic: boolean): number | null {
@@ -297,7 +306,7 @@ function textWidth(t: string, font: string, size: number, bold: boolean, italic:
   const key = `${font}|${size}|${bold}|${italic}|${t}`;
   const have = widths.get(key);
   if (have != null) return have;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(size * (t.length + 2))}" height="${Math.ceil(size * 2)}"><text x="0" y="${size}" font-family="${esc(font)}, Arial, sans-serif" font-size="${size}" font-weight="${bold ? 700 : 400}" font-style="${italic ? "italic" : "normal"}">${esc(t)}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${Math.ceil(size * (t.length + 2))}" height="${Math.ceil(size * 2)}"><text x="0" y="${size}" font-size="${size}" ${fontAttrs(font, bold, italic)}>${esc(t)}</text></svg>`;
   let w = 0;
   try { const b = new Resvg(svg, { font: fontOptions(svg) }).getBBox(); w = b ? b.x + b.width : 0; } catch { return null; }
   if (widths.size > 20000) widths.clear();
@@ -366,11 +375,11 @@ export function overlaySvg(o: Overlay, v: OverlayVars, readAsset: (src: string, 
       const anchor = l.align === "center" ? "middle" : l.align === "right" ? "end" : "start";
       const tx = l.align === "center" ? l.x + l.w / 2 : l.align === "right" ? l.x + l.w : l.x;
       let filter = "";
-      if (l.shadow) { defs += `<filter id="s${i}" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="${(size / 16).toFixed(1)}" dy="${(size / 16).toFixed(1)}" stdDeviation="${(size / 20).toFixed(1)}" flood-color="#000" flood-opacity="0.75"/></filter>`; filter = ` filter="url(#s${i})"`; }
+      if (l.shadow) { defs += `<filter id="s${i}" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="${(size / 16).toFixed(1)}" dy="${(size / 16).toFixed(1)}" stdDeviation="${(size / 20).toFixed(1)}" flood-color="${esc(l.shadowColor || "#000000")}" flood-opacity="0.75"/></filter>`; filter = ` filter="url(#s${i})"`; }
       const ow = num(l.outlineWidth, 0);
       const stroke = ow > 0 ? ` stroke="${esc(l.outline || "#000000")}" stroke-width="${ow}" stroke-linejoin="round" paint-order="stroke"` : "";
       const tspans = lines.map((s, k) => `<tspan x="${tx.toFixed(1)}" y="${(top + k * lh + size * 0.92).toFixed(1)}">${esc(s)}</tspan>`).join("");
-      el = `<text font-family="${esc(l.font || "Arial")}, Arial, sans-serif" font-size="${size}" font-weight="${bold ? 700 : 400}" font-style="${l.italic ? "italic" : "normal"}" fill="${esc(l.color || "#ffffff")}" text-anchor="${anchor}"${stroke}${filter}${op}>${tspans}</text>`;
+      el = `<text font-size="${size}" ${fontAttrs(l.font || "Arial", bold, !!l.italic)} fill="${esc(l.color || "#ffffff")}" text-anchor="${anchor}"${stroke}${filter}${op}>${tspans}</text>`;
     }
     if (!el) return;
     if (st === FULL) { body += el; return; }
@@ -414,6 +423,7 @@ export const loadRasterizer = () => resvg();
 
 // ---- system font index (family name -> font files), built once per process ----
 let FONTS: Map<string, string[]> | null = null;
+const FAMILY_NAMES = new Map<string, string>(); // lower case -> as the font spells it
 function fontIndex(): Map<string, string[]> {
   if (FONTS) return FONTS;
   FONTS = new Map();
@@ -430,17 +440,46 @@ function scanFonts(d: string, depth: number) {
   try { names = readdirSync(d); } catch { return; }
   for (const n of names) {
     const p = join(d, n);
-    if (/\.(ttf|otf)$/i.test(n)) {
-      for (const fam of fontFamilies(p)) { const k = fam.toLowerCase(); const list = FONTS!.get(k) ?? []; if (!list.includes(p)) list.push(p); FONTS!.set(k, list); }
-    } else if (depth < 4 && !n.includes(".")) scanFonts(p, depth + 1);
+    if (/\.(ttf|otf)$/i.test(n)) indexFont(p);
+    else if (depth < 4 && !n.includes(".")) scanFonts(p, depth + 1);
   }
 }
+function indexFont(p: string): string[] {
+  const fams = fontFamilies(p);
+  for (const fam of fams) {
+    const k = fam.toLowerCase();
+    const list = FONTS!.get(k) ?? [];
+    if (!list.includes(p)) list.push(p);
+    FONTS!.set(k, list);
+    if (!FAMILY_NAMES.has(k)) FAMILY_NAMES.set(k, fam);
+  }
+  return fams;
+}
+/** Add one font file to what drawings can use; its family names. */
+export function addFontFile(p: string): string[] { fontIndex(); return indexFont(p); }
+/** Stop using a font file (it was deleted). */
+export function forgetFontFile(p: string): void {
+  fontIndex();
+  for (const [k, list] of FONTS!) {
+    const left = list.filter((f) => f !== p);
+    if (left.length === list.length) continue;
+    if (left.length) FONTS!.set(k, left); else { FONTS!.delete(k); FAMILY_NAMES.delete(k); }
+  }
+}
+/** A font file's family names (as the file spells them). */
+export const fontFileFamilies = (p: string): string[] => fontFamilies(p);
+/** Every font family drawings can use, as the fonts spell them, A–Z. */
+export function fontFamilyNames(): string[] {
+  fontIndex();
+  return [...FAMILY_NAMES.values()].filter((f) => !/^[.@]/.test(f)).sort((a, b) => a.localeCompare(b));
+}
 const extraFontDirs = new Set<string>();
-/** Make a folder's fonts available to drawings (legacy text elements' include_fonts_from). */
-export function addFontDir(dir: string): void {
+/** Make a folder's fonts available to drawings: legacy text elements' include_fonts_from,
+ *  and the overlay fonts folder (looked at again each time with `rescan`). */
+export function addFontDir(dir: string, rescan = false): void {
   fontIndex();
   const k = dir.replace(/\\/g, "/").toLowerCase();
-  if (extraFontDirs.has(k)) return;
+  if (extraFontDirs.has(k) && !rescan) return;
   extraFontDirs.add(k);
   scanFonts(dir, 0);
 }

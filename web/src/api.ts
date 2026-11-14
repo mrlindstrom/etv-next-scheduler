@@ -22,7 +22,7 @@ export type { LayerAnim } from "../../src/overlay-anim.js";
 interface OvBox { x: number; y: number; w: number; h: number; opacity?: number; anim?: LayerAnim; appear?: { at?: number; for?: number } }
 export type OverlayLayer =
   | (OvBox & { type: "image"; src: string; fallback?: string })
-  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; fit?: boolean })
+  | (OvBox & { type: "text"; text: string; font?: string; size?: number; color?: string; bold?: boolean; italic?: boolean; upper?: boolean; align?: "left" | "center" | "right"; valign?: "top" | "middle" | "bottom"; outline?: string; outlineWidth?: number; shadow?: boolean; shadowColor?: string; fit?: boolean })
   | (OvBox & { type: "box"; color?: string; radius?: number; border?: string; borderWidth?: number; gradient?: { to: string; dir?: "right" | "down" } })
   | (OvBox & { type: "video"; src: string; fallback?: string });
 export interface OverlayTiming { mode: "always" | "every" | "start" | "end" | "media"; everyMinutes?: number; showSeconds?: number; offsetSeconds?: number; media?: OverlayMedia }
@@ -54,6 +54,8 @@ export const resolveMatch = (src: string, vars: Record<string, string>): string 
 };
 export interface OverlayPicture { name: string; size: number }
 export interface OverlayPictures { dir: string; isDefault: boolean; files: OverlayPicture[]; truncated: boolean }
+/** Fonts overlay text can use: every family the server draws with, and the font files added there. */
+export interface OverlayFonts { families: string[]; added: { file: string; families: string[] }[]; dir: string }
 
 export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; repeats?: boolean; ads?: number; }
 export interface ShowIf { key: string; equals: string | string[]; }
@@ -288,6 +290,10 @@ export const api = {
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
   overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; slots?: string[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),
   overlayPictures: (): Promise<OverlayPictures> => fetch("/api/overlays/pictures").then(j),
+  overlayFonts: (): Promise<OverlayFonts> => fetch("/api/overlays/fonts").then(j),
+  uploadOverlayFont: (file: File): Promise<{ file: string; families: string[] }> =>
+    fetch("/api/overlays/fonts", { method: "POST", headers: { "Content-Type": "application/octet-stream", "x-file-name": encodeURIComponent(file.name) }, body: file }).then(j),
+  deleteOverlayFont: (file: string): Promise<{ ok: boolean }> => fetch(`/api/overlays/fonts/${encodeURIComponent(file)}`, { method: "DELETE" }).then(j),
   legacyFolder: (folder = ""): Promise<{ folder: string; exists: boolean; files: { file: string; kind: string }[] }> => fetch(`/api/overlays/legacy-folder?folder=${encodeURIComponent(folder)}`).then(j),
   legacyImport: (items: { file: string; text: string; kind?: string }[]): Promise<{ imported: LegacyImported[] }> => fetch("/api/overlays/legacy-import", opts("POST", { items })).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
   legacyImportFolder: (folder: string): Promise<{ imported: LegacyImported[] }> => fetch("/api/overlays/legacy-import-folder", opts("POST", { folder })).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),

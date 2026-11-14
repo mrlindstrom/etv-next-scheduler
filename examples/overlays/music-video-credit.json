@@ -40,12 +40,12 @@
       "h": 96,
       "text": "{{artist}}",
       "size": 72,
-      "color": "#e8e8f0",
+      "color": "#b8c4cc",
       "font": "Arial",
       "bold": true,
       "upper": true,
-      "outline": "#1a1a2a",
-      "outlineWidth": 4,
+      "outline": "#0f1621",
+      "outlineWidth": 3,
       "shadow": true,
       "fit": true,
       "valign": "bottom",
@@ -61,7 +61,8 @@
           "type": "fade",
           "duration": 0.4
         }
-      }
+      },
+      "shadowColor": "#0f1621"
     },
     {
       "type": "text",
@@ -71,11 +72,11 @@
       "h": 70,
       "text": "“{{song}}”",
       "size": 50,
-      "color": "#fbe85a",
+      "color": "#ecdf5c",
       "font": "Arial",
       "bold": true,
       "upper": true,
-      "outline": "#1c1c1c",
+      "outline": "#1c120c",
       "outlineWidth": 4,
       "shadow": true,
       "fit": true,
@@ -92,7 +93,8 @@
           "type": "fade",
           "duration": 0.4
         }
-      }
+      },
+      "shadowColor": "#1c120c"
     },
     {
       "type": "image",

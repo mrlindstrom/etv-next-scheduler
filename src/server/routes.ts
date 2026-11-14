@@ -40,8 +40,8 @@ import { parseQuery } from "../search.js";
 import { SqliteResolver, tagCounts, tagCombos } from "../sqlite-resolver.js";
 import { parseCollectionRef } from "../collection-ref.js";
 import type { MediaItem } from "../model.js";
-import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile } from "./overlay-library.js";
-import { OVERLAY_FIELDS, OVERLAY_SLOTS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, findPicture, type Overlay } from "../overlays.js";
+import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile, overlayFontsDir, listOverlayFonts, saveOverlayFont, overlayFontFile, deleteOverlayFont } from "./overlay-library.js";
+import { OVERLAY_FIELDS, OVERLAY_SLOTS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, findPicture, fontFamilyNames, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
 import { compareChannelNumbers } from "../channel-numbers.js";
@@ -995,6 +995,29 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const ext = p.split(".").pop()!.toLowerCase();
     const type = ({ mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska" } as Record<string, string>)[ext] ?? logoContentType(p);
     reply.header("content-type", type).header("cache-control", "public, max-age=604800, immutable"); // content-addressed
+    return reply.send(await readFile(p));
+  });
+  // --- fonts for overlay text: the server's own, plus fonts added here (TTF / OTF) ---
+  const fontsDir = () => overlayFontsDir(store, ROOT);
+  fontsDir(); // drawings in this process can use the added fonts from the start
+  app.get("/api/overlays/fonts", async () => {
+    const dir = fontsDir();
+    return { families: fontFamilyNames(), added: listOverlayFonts(dir), dir };
+  });
+  app.post("/api/overlays/fonts", async (req, reply) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) { reply.code(400); return { error: "Send the font file (TTF or OTF) as the request body." }; }
+    try { return await saveOverlayFont(fontsDir(), req.body, decodeURIComponent(String(req.headers["x-file-name"] ?? ""))); }
+    catch (e) { reply.code(400); return { error: (e as Error).message }; }
+  });
+  app.delete("/api/overlays/fonts/:file", async (req, reply) => {
+    if (!deleteOverlayFont(fontsDir(), String((req.params as any).file))) { reply.code(404); return { error: "That font isn't there any more." }; }
+    return { ok: true };
+  });
+  // the added fonts, for the designer's preview (@font-face)
+  app.get("/overlay-fonts/:file", async (req, reply) => {
+    const p = overlayFontFile(fontsDir(), String((req.params as any).file));
+    if (!p || !existsSync(p)) return reply.code(404).send();
+    reply.header("content-type", p.toLowerCase().endsWith(".otf") ? "font/otf" : "font/ttf").header("cache-control", "no-cache");
     return reply.send(await readFile(p));
   });
   // --- the pictures folder: pictures layers pick by the schedule (match:{{next_show}}) ---

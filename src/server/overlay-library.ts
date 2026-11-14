@@ -8,6 +8,7 @@
 // <runtime>/overlays/images   pictures that layers pick by the schedule (match:{{next_show}});
 //                             named by the people adding them, so the name is the match.
 //                             Settings can point it elsewhere (e.g. a shared folder).
+// <runtime>/overlays/fonts    fonts added for overlay text (TTF / OTF, kept by their own names)
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readdirSync, statSync, unlinkSync, rmSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
@@ -15,7 +16,7 @@ import { join, isAbsolute, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConfigStore } from "./config.js";
 import { sniffImage, logoPath, isManagedLogo } from "./channel-logos.js";
-import { CHANNEL_LOGO, setOverlayExamplesDir, setOverlayPicturesDir, type Overlay, type OverlayBuildOptions } from "../overlays.js";
+import { CHANNEL_LOGO, setOverlayExamplesDir, setOverlayPicturesDir, addFontDir, addFontFile, forgetFontFile, fontFileFamilies, type Overlay, type OverlayBuildOptions } from "../overlays.js";
 import type { WatermarkLocation } from "../model.js";
 
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
@@ -25,6 +26,12 @@ const abs = (root: string, p: string) => (isAbsolute(p) ? p : join(root, p));
 export const overlaysDir = (store: ConfigStore, root: string) => join(abs(root, store.getNextConfig().runtimeDir), "overlays");
 export const overlayAssetsDir = (store: ConfigStore, root: string) => join(overlaysDir(store, root), "assets");
 export const overlayCacheDir = (store: ConfigStore, root: string) => join(overlaysDir(store, root), "cache");
+/** Fonts added for overlay text; drawings in this thread can use them once this is called. */
+export const overlayFontsDir = (store: ConfigStore, root: string) => {
+  const d = join(overlaysDir(store, root), "fonts");
+  if (existsSync(d)) addFontDir(d, true);
+  return d;
+};
 /** The pictures folder `match:` layers pick from (also where they resolve in this thread). */
 export const overlayPicturesDir = (store: ConfigStore, root: string) => {
   const set = store.get().overlayPicturesDir?.trim();
@@ -43,6 +50,7 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
   const meta = store.channelMeta(channelName);
   const nc = store.getNextConfig();
   const ff = nc.ffmpegPath ? abs(root, nc.ffmpegPath) : join(root, "bin", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
+  overlayFontsDir(store, root); // the added fonts, for this build's drawings
   return {
     library: overlayLibrary(store),
     channel: meta?.overlays ?? [],
@@ -79,6 +87,45 @@ export async function saveOverlayAsset(dir: string, data: Buffer, fileName = "")
   const dest = join(dir, file);
   if (!existsSync(dest)) await writeFile(dest, data);
   return { src: `assets/${file}`, kind };
+}
+
+// ---- fonts added for overlay text --------------------------------------------------
+export const MAX_FONT_BYTES = 40 * 1024 * 1024;
+const FONT_FILE = /\.(ttf|otf)$/i;
+/** The added fonts: each file and the family names in it. */
+export function listOverlayFonts(dir: string): { file: string; families: string[] }[] {
+  let names: string[] = [];
+  try { names = readdirSync(dir).filter((n) => FONT_FILE.test(n)); } catch { return []; }
+  return names.sort((a, b) => a.localeCompare(b)).map((file) => ({ file, families: fontFileFamilies(join(dir, file)) }));
+}
+/** Save an added font under its own name (a newer copy replaces it) and start using it. */
+export async function saveOverlayFont(dir: string, data: Buffer, fileName: string): Promise<{ file: string; families: string[] }> {
+  const tag = data.subarray(0, 4).toString("latin1");
+  const sfnt = tag === "OTTO" || tag === "true" || (data[0] === 0 && data[1] === 1 && data[2] === 0 && data[3] === 0);
+  if (!sfnt) throw new Error(tag === "wOFF" || tag === "wOF2" ? "That's a web font (WOFF). Add the TTF or OTF version of the font." : "That file isn't a TTF or OTF font.");
+  if (data.length > MAX_FONT_BYTES) throw new Error("The font file is too large (the limit is 40 MB).");
+  const stem = basename(fileName || "font").replace(/\.[^.]*$/, "").replace(/[^\w .()+-]+/g, "").trim() || "font";
+  const file = `${stem}.${tag === "OTTO" ? "otf" : "ttf"}`;
+  await mkdir(dir, { recursive: true });
+  const dest = join(dir, file);
+  await writeFile(dest, data);
+  forgetFontFile(dest);
+  const families = addFontFile(dest);
+  if (!families.length) { try { unlinkSync(dest); } catch { /* ignore */ } throw new Error("Couldn't read the font's name from that file."); }
+  return { file, families };
+}
+/** An added font's path by its file name (null when it isn't one). */
+export function overlayFontFile(dir: string, file: string): string | null {
+  const name = basename(file);
+  return name === file && FONT_FILE.test(name) ? join(dir, name) : null;
+}
+/** Delete an added font. */
+export function deleteOverlayFont(dir: string, file: string): boolean {
+  const p = overlayFontFile(dir, file);
+  if (!p || !existsSync(p)) return false;
+  forgetFontFile(p);
+  unlinkSync(p);
+  return true;
 }
 
 // ---- the pictures folder (layers that pick a picture by the schedule) ------------

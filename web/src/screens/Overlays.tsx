@@ -13,7 +13,7 @@
 //     on channels right here
 // Builds render each overlay per programme (see src/overlays.ts).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim } from "../api.js";
+import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim, type OverlayFonts } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { LegacyImport, LegacyDesigner } from "../LegacyElements.js";
 import { navigate } from "../nav.js";
@@ -835,6 +835,73 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
 
 // ---- layer rendering + properties -----------------------------------------------
 let measureCtx: CanvasRenderingContext2D | null = null;
+// ---- fonts -------------------------------------------------------------------------
+// The server draws with its own fonts plus any added on this page (TTF / OTF in
+// runtime/overlays/fonts); added ones are loaded here too, so the preview matches.
+let fontsCache: Promise<OverlayFonts> | null = null;
+const loadFonts = (fresh = false) => {
+  if (fresh || !fontsCache) fontsCache = api.overlayFonts().catch(() => ({ families: [], added: [], dir: "" }));
+  return fontsCache;
+};
+/** The added fonts as @font-face rules for the designer's preview. */
+function addFontFaces(f: OverlayFonts) {
+  let el = document.getElementById("tvn-overlay-fonts") as HTMLStyleElement | null;
+  if (!el) { el = document.createElement("style"); el.id = "tvn-overlay-fonts"; document.head.appendChild(el); }
+  el.textContent = f.added.flatMap((a) => a.families.map((fam) => `@font-face { font-family: ${JSON.stringify(fam)}; src: url("/overlay-fonts/${encodeURIComponent(a.file)}"); }`)).join("\n");
+}
+function useOverlayFonts(): OverlayFonts | null {
+  const [f, setF] = useState<OverlayFonts | null>(null);
+  useEffect(() => {
+    let live = true;
+    const get = (fresh = false) => loadFonts(fresh).then((x) => { if (!live) return; setF(x); addFontFaces(x); });
+    get();
+    const changed = () => get(true);
+    window.addEventListener("tvn:fonts-changed", changed);
+    return () => { live = false; window.removeEventListener("tvn:fonts-changed", changed); };
+  }, []);
+  return f;
+}
+const errText = (e: unknown) => { const m = (e as Error).message ?? String(e); try { return JSON.parse(m).error ?? m; } catch { return m; } };
+
+/** A text layer's font: fonts added here, the common ones, then everything on the server,
+ *  and adding a font file. */
+function FontPicker({ value, onChange }: { value: string; onChange: (font: string) => void }) {
+  const f = useOverlayFonts();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const added = [...new Set((f?.added ?? []).flatMap((a) => a.families))].sort((a, b) => a.localeCompare(b));
+  const server = (f?.families ?? []).filter((x) => !added.includes(x) && !FONTS.includes(x));
+  const known = !f || added.includes(value) || FONTS.includes(value) || server.includes(value);
+  const opt = (x: string) => <option key={x} value={x} style={{ fontFamily: x }}>{x}</option>;
+  const upload = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true); setErr("");
+    try {
+      const r = await api.uploadOverlayFont(file);
+      await loadFonts(true);
+      window.dispatchEvent(new Event("tvn:fonts-changed"));
+      if (r.families[0]) onChange(r.families[0]);
+    } catch (e) { setErr(errText(e)); } finally { setBusy(false); if (fileRef.current) fileRef.current.value = ""; }
+  };
+  return (
+    <>
+      <label>Font
+        <select value={value} style={{ fontFamily: value }} onChange={(e) => (e.target.value === "__add" ? fileRef.current?.click() : onChange(e.target.value))}>
+          {!known && <option value={value}>{value} (not on the server)</option>}
+          {added.length > 0 && <optgroup label="Added fonts">{added.map(opt)}</optgroup>}
+          <optgroup label="Common">{FONTS.map(opt)}</optgroup>
+          {server.length > 0 && <optgroup label="Everything on the server">{server.map(opt)}</optgroup>}
+          <option value="__add">Add a font file (TTF / OTF)…</option>
+        </select>
+        {busy && <span className="muted" style={{ fontSize: 12 }}>Adding the font…</span>}
+        {err && <span className="err" style={{ fontSize: 12 }}>{err}</span>}
+      </label>
+      <input ref={fileRef} type="file" accept=".ttf,.otf" hidden onChange={(e) => upload(e.target.files?.[0])} />
+    </>
+  );
+}
+
 /** A line's width in artboard pixels with the browser's font. */
 function measure(t: string, font: string, size: number, bold: boolean, italic: boolean): number {
   measureCtx ??= document.createElement("canvas").getContext("2d");
@@ -871,7 +938,7 @@ function LayerView({ l, scale, vars, inner, chars = 1 }: { l: Layer; scale: numb
       ...pos, display: "flex", flexDirection: "column", justifyContent: l.valign === "bottom" ? "flex-end" : l.valign === "middle" ? "center" : "flex-start",
       textAlign: l.align ?? "left", color: l.color || "#fff", fontFamily: `${l.font || "Arial"}, Arial, sans-serif`, fontSize: size, lineHeight: 1.18,
       fontWeight: l.bold ? 700 : 400, fontStyle: l.italic ? "italic" : "normal", whiteSpace: l.fit ? "pre" : "pre-wrap", overflowWrap: "break-word", opacity: op, pointerEvents: "none",
-      textShadow: l.shadow ? `${size / 16}px ${size / 16}px ${size / 12}px rgba(0,0,0,.75)` : undefined,
+      textShadow: l.shadow ? `${size / 16}px ${size / 16}px ${size / 12}px ${l.shadowColor || "#000000"}bf` : undefined,
       WebkitTextStroke: l.outlineWidth ? `${l.outlineWidth * scale}px ${l.outline || "#000"}` : undefined, paintOrder: "stroke fill",
     } as React.CSSProperties}>{text}</div>
   );
@@ -897,7 +964,7 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
             <textarea ref={textRef} rows={3} value={l.text} onChange={(e) => set({ text: e.target.value })} placeholder="Type, and click a show detail below to add it" />
           </label>
           <div className="ov-grid2">
-            <label>Font<select value={l.font || "Arial"} onChange={(e) => set({ font: e.target.value })}>{FONTS.map((f) => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}</select></label>
+            <FontPicker value={l.font || "Arial"} onChange={(font) => set({ font })} />
             {n("size", "Size", 6)}
           </div>
           <div className="ov-grid3">
@@ -919,6 +986,7 @@ function LayerProps({ l, i, setLayer, textRef, onReplace, onDuplicate, onDelete,
             <label className="ov-inline"><input type="checkbox" checked={!!l.italic} onChange={(e) => set({ italic: e.target.checked })} /> Italic</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.upper} onChange={(e) => set({ upper: e.target.checked })} /> ALL CAPS</label>
             <label className="ov-inline"><input type="checkbox" checked={!!l.shadow} onChange={(e) => set({ shadow: e.target.checked })} /> Shadow</label>
+            {l.shadow && <label className="ov-inline" title="The shadow's colour"><input type="color" value={l.shadowColor || "#000000"} onChange={(e) => set({ shadowColor: e.target.value })} /></label>}
             <label className="ov-inline" title="Keep it on one line; it gets smaller when a long show name wouldn't fit"><input type="checkbox" checked={!!l.fit} onChange={(e) => set({ fit: e.target.checked })} /> Shrink to fit</label>
           </div>
         </>
