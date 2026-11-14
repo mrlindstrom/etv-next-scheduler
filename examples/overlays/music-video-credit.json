@@ -20,7 +20,7 @@
         "to": "#2626b8",
         "dir": "down"
       },
-      "opacity": 82,
+      "opacity": 70,
       "anim": {
         "in": {
           "type": "fade",
@@ -96,11 +96,12 @@
     },
     {
       "type": "image",
-      "x": 1196,
-      "y": 742,
-      "w": 360,
-      "h": 290,
+      "x": 1284,
+      "y": 772,
+      "w": 270,
+      "h": 236,
       "src": "channel-logo",
+      "opacity": 85,
       "anim": {
         "in": {
           "type": "fade",
