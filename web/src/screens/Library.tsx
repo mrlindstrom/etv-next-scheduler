@@ -107,7 +107,7 @@ export function Library() {
   };
 
   const runImport = async () => {
-    if (status?.imported && !confirm(
+    if (status?.imported && (status.stats?.mediaItems ?? 0) > 0 && !confirm(
       "Re-import from ErsatzTV legacy?\n\nThis REPLACES this app's library database with a fresh copy of the legacy one — " +
       "collections you created or changed here, scan results and metadata refreshes are lost.")) return;
     setMsg("");
@@ -130,9 +130,9 @@ export function Library() {
   const createLib = async () => {
     setMsg("");
     const r = await api.createLibrary({ name: newLib.name, kind: newLib.kind, paths: [newLib.path] });
-    if ("error" in r) { setMsg(r.error); return; }
+    if ("error" in r) { setMsg(`⚠ ${r.error}`); return; }
     setShowAdd(false); setNewLib({ name: "", kind: 4, path: "" }); setMsg(`Added "${r.name}" ✓`);
-    loadMedia(); setTimeout(() => setMsg(""), 2500);
+    load(); loadMedia(); setTimeout(() => setMsg(""), 2500);
   };
   const deleteLib = async (l: LibraryInfo) => {
     const extra = l.sourceType === "local" ? "" : " (a re-import would bring it back)";
@@ -147,15 +147,15 @@ export function Library() {
     setMsg("");
     if (srcForm.type === "local") {
       const r = await api.createLibrary({ name: newLib.name, kind: newLib.kind, paths: [newLib.path] });
-      if ("error" in r) { setMsg(r.error); return; }
+      if ("error" in r) { setMsg(`⚠ ${r.error}`); return; }
       setAddSrc(false); setNewLib({ name: "", kind: 4, path: "" });
-      setMsg(`Added "${r.name}" — click it below and hit Scan to index its files.`); loadMedia(); setTimeout(() => setMsg(""), 4000);
+      setMsg(`Added "${r.name}" — click it below and hit Scan to index its files.`); load(); loadMedia(); setTimeout(() => setMsg(""), 4000);
       return;
     }
     const r = await api.addSource(srcForm);
-    if (r.error) { setMsg(r.error); return; }
+    if (r.error) { setMsg(`⚠ ${r.error}`); return; }
     setAddSrc(false); setSrcForm({ type: "local", serverName: "", address: "", token: "" });
-    setMsg("Source added — click it below to sign in, then Discover libraries."); loadMedia(); setTimeout(() => setMsg(""), 4000);
+    setMsg("Source added — click it below to sign in, then Discover libraries."); load(); loadMedia(); setTimeout(() => setMsg(""), 4000);
   };
   const discover = async (id: number) => {
     setMsg("Discovering libraries…");
@@ -201,6 +201,10 @@ export function Library() {
   };
 
   const job = status?.job;
+  const hasMedia = !!status?.imported && (status.stats?.mediaItems ?? 0) > 0;
+  // a new install's library is made when the first source is added, so the tabs
+  // show without one unless an ErsatzTV database is waiting to be imported
+  const showTabs = !!status && !job?.running && (status.imported || !status.source);
   const [tab, setTab] = useState<"libraries" | "sources" | "index" | "trash">("libraries");
   const pct = job && job.total ? Math.round((job.index / job.total) * 100) : 0;
   const scanPct = scan && scan.total ? Math.round((scan.done_ / scan.total) * 100) : 0;
@@ -220,7 +224,7 @@ export function Library() {
 
       <div className="card">
         <div className="stats">
-          <Stat label="Status" text={status?.imported ? "Imported ✓" : "Not imported"} ok={status?.imported} />
+          <Stat label="Status" text={hasMedia ? "Ready ✓" : status?.imported ? "Empty: add media below" : status?.source ? "Not imported yet" : "Not set up"} ok={hasMedia} />
           {status?.stats && <>
             <Stat label="media items" text={status.stats.mediaItems.toLocaleString()} />
             <Stat label="episodes" text={status.stats.episodes.toLocaleString()} />
@@ -229,15 +233,17 @@ export function Library() {
           </>}
         </div>
       </div>
-      {!legacyImport && !job?.running && (
+      {!legacyImport && !job?.running && status?.source && (
         <p className="muted" style={{ marginTop: 14, fontSize: 13 }}>ErsatzTV legacy import is turned off (migration finished). Turn it back on on the Settings page if you need to re-import.</p>
       )}
-      {(legacyImport || job?.running) && <div className="actions" style={{ marginTop: 14 }}>
-        <button className="primary" onClick={runImport} disabled={job?.running || !status?.source}>
-          {job?.running ? "Importing…" : status?.imported ? "Re-import from ErsatzTV" : "Import from ErsatzTV"}
-        </button>
-        {!status?.source && <span className="muted">Set the ErsatzTV DB path on the Settings page first.</span>}
-        {msg && <span className={msg.startsWith("Import request failed") ? "err" : "ok"}>{msg}</span>}
+      {legacyImport && !job?.running && !status?.source && (
+        <p className="muted" style={{ marginTop: 14, fontSize: 13 }}>Coming from ErsatzTV legacy? Set its database path on the Settings page to import your library from it.</p>
+      )}
+      {(((legacyImport && status?.source) || job?.running) || msg) && <div className="actions" style={{ marginTop: 14 }}>
+        {((legacyImport && status?.source) || job?.running) && <button className="primary" onClick={runImport} disabled={job?.running}>
+          {job?.running ? "Importing…" : hasMedia ? "Re-import from ErsatzTV" : "Import from ErsatzTV"}
+        </button>}
+        {msg && <span className={msg.startsWith("Import request failed") || msg.startsWith("⚠") ? "err" : "ok"}>{msg}</span>}
       </div>}
       {job?.running && (
         <div className="job" style={{ marginTop: 12 }}>
@@ -267,7 +273,7 @@ export function Library() {
         </div>
       )}
 
-      {status?.imported && (
+      {showTabs && (
         <>
           <div className="subtabs" style={{ marginTop: 18 }}>
             {([["libraries", `Libraries (${libraries.filter((l) => l.enabled).length})`], ["sources", `Sources (${sourceRows})`], ["index", "Search index"], ["trash", `Trash${trash.total ? ` (${trash.total})` : ""}`]] as const).map(([id, label]) => (

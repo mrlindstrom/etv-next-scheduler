@@ -26,5 +26,9 @@ web/vite.config.ts.timestamp-*
 *.exe
 *.dll
 
+# Docker: your compose file and its /config folder
+/docker-compose.yml
+/config/
+
 # isolated test copy (npm run test-instance)
 /.test-instance/

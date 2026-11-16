@@ -4,8 +4,9 @@ import type { SchedulingModule } from "./module.js";
 
 const DEFAULT = `# YAML playout (ErsatzTV-legacy format)
 content:
-  - key: main
-    search: type:episode
+  - search:
+    key: main
+    query: type:episode
     order: shuffle
 playout:
   - epg_group: true

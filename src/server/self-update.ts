@@ -95,6 +95,7 @@ export class SelfUpdater {
   /** Fetches and works out what an update would bring (and whether anything blocks it). */
   async check(fetch = true): Promise<void> {
     try {
+      if (process.env.TVNS_DOCKER === "1") { this.st = { ...this.st, available: false, reason: "running in Docker: update by pulling the new image (docker compose pull, then docker compose up -d)" }; return; }
       if (!existsSync(join(this.root, ".git"))) { this.st = { ...this.st, available: false, reason: "this copy isn't a git checkout" }; return; }
       const branch = await this.git("rev-parse", "--abbrev-ref", "HEAD");
       let upstream = "";

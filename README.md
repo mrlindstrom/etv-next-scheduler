@@ -46,6 +46,18 @@ npm run server
 
 Then open **http://localhost:8730**. From now on, start it with `npm run server`.
 
+### Or with Docker
+
+```bash
+git clone https://github.com/mrlindstrom/etv-next-scheduler.git
+cd etv-next-scheduler
+cp docker-compose.example.yml docker-compose.yml   # set your time zone and media folder
+docker compose up -d --build
+```
+
+Everything it writes lives in `./config`. See [docs/DOCKER.md](docs/DOCKER.md)
+for media paths, ports, GPU encoding and updating.
+
 ## First run
 
 1. **Settings**: check the time zone.

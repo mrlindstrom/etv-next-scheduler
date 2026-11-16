@@ -13,6 +13,7 @@ import { SelfUpdater, registerSelfUpdateRoutes } from "./self-update.js";
 import { initAppLog, appLog } from "./app-log.js";
 import { indexService } from "./index-service.js";
 import { HdhrTuner, registerHdhrRoutes } from "./hdhr.js";
+import { ensureLibraryDb } from "./library-import.js";
 
 const PORT = Number(process.env.PORT ?? 8730);
 const ROOT = process.cwd();
@@ -44,8 +45,11 @@ scheduler.reconfigure(); // start the auto-build loop if enabled in config
 // Search index: check it (rebuild if missing/corrupt/outdated) and apply anything
 // queued while the server was down — in a worker thread, so startup isn't blocked.
 {
-  const lib = store.get().libraryDbPath;
+  const { libraryDbPath: lib, etvDbPath } = store.get();
   const libPath = isAbsolute(lib) || /^[A-Za-z]:/.test(lib) ? lib : join(ROOT, lib);
+  // a new install (no ErsatzTV legacy database to import) starts with an empty library
+  try { if (ensureLibraryDb(libPath, etvDbPath) === "created") appLog("library", `started an empty library at ${libPath}`); }
+  catch (e) { appLog("library", `couldn't start an empty library at ${libPath}: ${(e as Error).message}`); }
   if (existsSync(libPath)) indexService.start(libPath, "startup check");
 }
 

@@ -23,7 +23,7 @@ import { registerGraphicsRoutes } from "./graphics.js";
 import { registerTroubleshootRoutes } from "./troubleshoot.js";
 import type { NextRunner } from "./next-runner.js";
 import { fallbackChoice, renderStandby } from "./fallback-image.js";
-import { effectiveDbPath } from "./library-import.js";
+import { effectiveDbPath, ensureLibraryDb } from "./library-import.js";
 import { listSources, listLibraries, listTrash, emptyTrash, libraryExists, createLocalLibrary, deleteLibrary, deleteSource, listLibraryPaths, addLibraryPath, updateLibraryPath, removeLibraryPath, addRemoteSource, upsertDiscoveredLibraries, listPathReplacements, addPathReplacement, updatePathReplacement, removePathReplacement } from "./library-repo.js";
 import { readSourceInfo, discoverLibraries } from "./scanner-remote.js";
 import { kindCounts, listCards, letterOffsets, listSeasons, listEpisodes, itemDetail, artworkTarget, listShowTitles, isLibraryFile } from "./library-browse.js";
@@ -200,6 +200,17 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
 
   // --- media library: sources / libraries / trash ---
   const libDb = () => abs(store.get().libraryDbPath);
+  /** A library to add media to: makes an empty one on a new install. The error
+   *  to show, or null when there's a library. */
+  const ensureLib = (): string | null => {
+    if (importJob.running) return "The ErsatzTV import is still running.";
+    try {
+      const r = ensureLibraryDb(libDb(), store.get().etvDbPath);
+      if (r === "legacy") return "Import your ErsatzTV library first (Library → Import from ErsatzTV), or clear the ErsatzTV database path in Settings to start an empty library.";
+      if (r === "created") { appLog("library", `started an empty library at ${libDb()}`); indexService.start(libDb(), "a new library was started"); }
+      return null;
+    } catch (e) { return `Couldn't start a library at ${libDb()}: ${(e as Error).message}`; }
+  };
   const withEnabled = () => {
     const en = store.libraryEnabledMap();
     return listLibraries(libDb()).map((l) => ({ ...l, enabled: en.get(l.id) ?? true, hasToken: l.sourceType === "local" ? true : store.hasSourceToken(l.sourceId) }));
@@ -207,7 +218,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   app.get("/api/media/sources", async () => libraryExists(libDb()) ? listSources(libDb()) : []);
   app.get("/api/media/libraries", async () => libraryExists(libDb()) ? withEnabled() : []);
   app.post("/api/media/libraries", async (req) => {
-    if (!libraryExists(libDb())) return { error: "Import a library first (the app database doesn't exist yet)." };
+    const noLib = ensureLib();
+    if (noLib) return { error: noLib };
     const b = (req.body as any) ?? {};
     const paths: string[] = Array.isArray(b.paths) ? b.paths : b.path ? [b.path] : [];
     try {
@@ -241,7 +253,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
 
   // --- add a remote source (Plex/Jellyfin/Emby) + discover its libraries ---
   app.post("/api/media/sources", async (req) => {
-    if (!libraryExists(libDb())) return { error: "Import a library first (the app database doesn't exist yet)." };
+    const noLib = ensureLib();
+    if (noLib) return { error: noLib };
     const b = (req.body as any) ?? {};
     try {
       const r = addRemoteSource(libDb(), { type: b.type, serverName: b.serverName, address: b.address });
@@ -1412,6 +1425,8 @@ async function runBuild(jobId: string, channels: string[], cfg: any, days: numbe
   const now = Date.now();
   const startMs = floorLocalMidnight(now, tz);
   const finishMs = ceilLocalMidnight(now + days * 86_400_000, tz);
+  // a channel that needs no media (a remote stream) can build before any is added
+  try { ensureLibraryDb(abs(cfg.libraryDbPath), cfg.etvDbPath); } catch { /* reported below as no library */ }
   const dbPath = effectiveDbPath(abs(cfg.libraryDbPath), cfg.etvDbPath);
   const chDir = abs(cfg.channelsDir);
   const xmltvDir = abs(join(store.getNextConfig().runtimeDir, "xmltv"));
@@ -1424,7 +1439,7 @@ async function runBuild(jobId: string, channels: string[], cfg: any, days: numbe
   for (const name of channels) {
     const rec = store.startBuild(name);
     recByName.set(name, rec);
-    if (!dbPath) { store.finishBuild(rec, "error", null, null, "No ErsatzTV database configured"); job.results.push({ channel: name, error: "No ErsatzTV database configured" }); continue; }
+    if (!dbPath) { const err = "There's no media library yet: add media on the Library page"; store.finishBuild(rec, "error", null, null, err); job.results.push({ channel: name, error: err }); continue; }
     const ch = await channelFile(chDir, name);
     if (!ch) { store.finishBuild(rec, "error", null, null, "channel config not found"); job.results.push({ channel: name, error: "channel config not found" }); continue; }
     await refreshPodsChannelFile(ch.path, store.listPods()); // keep pod snapshot fresh

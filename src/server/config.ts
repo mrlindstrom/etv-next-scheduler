@@ -97,7 +97,7 @@ export interface NextConfig {
 
 export function defaultNextConfig(): NextConfig {
   return {
-    runtimeDir: "runtime", outputFolder: "./output", binaryPath: "bin/ersatztv.exe", bindAddress: "0.0.0.0", port: 8409, publicUrl: "", ffmpegPath: "", ffprobePath: "", fallbackImage: "black",
+    runtimeDir: "runtime", outputFolder: "./output", binaryPath: process.platform === "win32" ? "bin/ersatztv.exe" : "bin/ersatztv", bindAddress: "0.0.0.0", port: 8409, publicUrl: "", ffmpegPath: "", ffprobePath: "", fallbackImage: "black",
     video: { width: 1920, height: 1080, codec: "h264", bitDepth: 8, bitrateKbps: 2000, bufferKbps: 4000, accel: "", tonemapAlgorithm: "linear" },
     audio: { codec: "aac", bitrateKbps: 192, bufferKbps: 384, channels: 2, sampleRateHz: 48000, normalizeLoudness: true },
     upNext: { enabled: false, count: 3, durationMs: 12000, fontFile: "C:/Windows/Fonts/arialbd.ttf" },

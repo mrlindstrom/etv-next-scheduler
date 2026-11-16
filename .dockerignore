@@ -1,0 +1,19 @@
+# Only the source goes into the image; the build stage installs and compiles.
+**/node_modules
+dist
+dist-next
+dist-old
+web/dist
+web/dist-next
+web/vite.config.ts.timestamp-*
+.git
+.test-instance
+# per-machine state (lives in the /config volume instead)
+data
+channels
+runtime
+bin
+playouts
+*.sqlite
+*.db
+*.log

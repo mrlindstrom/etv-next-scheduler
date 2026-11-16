@@ -76,7 +76,7 @@ export class NextRunner {
     // logo URLs are built from publicUrl (only part of the signature once set)
     return JSON.stringify({ metas, port: nc.port, bind: nc.bindAddress, ff: [nc.ffmpegPath, nc.ffprobePath], v: nc.video, a: nc.audio, ...(nc.publicUrl ? { pub: nc.publicUrl } : {}), ...(nc.fallbackImage && nc.fallbackImage !== "black" ? { fb: nc.fallbackImage } : {}) });
   }
-  private binaryPath(): string { return abs(this.root, this.store.getNextConfig().binaryPath || "bin/ersatztv.exe"); }
+  private binaryPath(): string { return abs(this.root, this.store.getNextConfig().binaryPath || (process.platform === "win32" ? "bin/ersatztv.exe" : "bin/ersatztv")); }
   private hasPlayouts(): boolean {
     const base = playoutBaseDir(this.store, this.root);
     for (const m of this.store.channelMetas().filter((c) => c.enabled)) {

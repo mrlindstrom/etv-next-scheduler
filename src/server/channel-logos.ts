@@ -75,9 +75,10 @@ export function lanAddress(): string {
   return cands.sort((a, b) => rank(a) - rank(b))[0] ?? "127.0.0.1";
 }
 
-/** The address clients use to reach this scheduler: the setting, or the LAN address. */
+/** The address clients use to reach this scheduler: the setting, PUBLIC_URL (set in a
+ *  Docker container, whose own address other devices can't reach), or the LAN address. */
 export function schedulerBaseUrl(publicUrl: string | undefined, port: number): string {
-  const set = (publicUrl ?? "").trim().replace(/\/+$/, "");
+  const set = ((publicUrl ?? "").trim() || (process.env.PUBLIC_URL ?? "").trim()).replace(/\/+$/, "");
   if (set) return /^https?:\/\//i.test(set) ? set : `http://${set}`;
   return `http://${lanAddress()}:${port}`;
 }

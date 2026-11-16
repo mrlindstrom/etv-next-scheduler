@@ -8,11 +8,40 @@
 // tables are intentionally left behind — this app owns that side.
 
 import { DatabaseSync } from "node:sqlite";
-import { unlinkSync, existsSync } from "node:fs";
+import { unlinkSync, existsSync, mkdirSync, renameSync } from "node:fs";
+import { dirname } from "node:path";
+import { LIBRARY_SCHEMA } from "./library-schema.js";
 
 /** Use the imported library.sqlite once it exists; otherwise the legacy source. */
 export function effectiveDbPath(libraryDbPath: string, etvDbPath: string): string {
   return libraryDbPath && existsSync(libraryDbPath) ? libraryDbPath : etvDbPath;
+}
+
+/** Makes an empty library.sqlite (the import's tables, no rows), for a new install
+ *  with no ErsatzTV legacy database. Built beside it and renamed in, so a half-made
+ *  file is never taken for a library. */
+export function createEmptyLibrary(destPath: string): void {
+  mkdirSync(dirname(destPath), { recursive: true });
+  const tmp = `${destPath}.new`;
+  for (const suffix of ["", "-wal", "-shm", "-journal"]) { try { unlinkSync(tmp + suffix); } catch { /* none */ } }
+  const db = new DatabaseSync(tmp);
+  db.exec("BEGIN");
+  for (const sql of LIBRARY_SCHEMA) db.exec(sql);
+  db.exec("COMMIT");
+  db.close();
+  // a deleted library can leave its -wal/-shm behind; SQLite would replay them into this one
+  for (const suffix of ["-wal", "-shm", "-journal"]) { try { unlinkSync(destPath + suffix); } catch { /* none */ } }
+  renameSync(tmp, destPath);
+}
+
+/** Makes sure there's a library to add media to: "exists", "created" (an empty
+ *  one was made), or "legacy" when an ErsatzTV legacy database is set but not
+ *  imported yet (builds read it directly until then, so nothing is made over it). */
+export function ensureLibraryDb(libraryDbPath: string, etvDbPath: string): "exists" | "created" | "legacy" {
+  if (libraryDbPath && existsSync(libraryDbPath)) return "exists";
+  if (etvDbPath) return "legacy";
+  createEmptyLibrary(libraryDbPath);
+  return "created";
 }
 
 /** Tables to import (media library subset). Everything else (playout/channel/

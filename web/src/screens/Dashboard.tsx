@@ -50,7 +50,8 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
 
   const steps: Step[] = [];
   if (runner && !runner.binaryFound) steps.push({ tone: "warn", text: "ErsatzTV next isn't installed yet. It's what streams your channels.", action: "Install it", page: "streaming" });
-  const emptyLibrary = !!lib && !lib.imported && !lib.stats;
+  // a new install starts with an empty library (no items) rather than none
+  const emptyLibrary = !!lib && !lib.job?.running && (lib.stats && "mediaItems" in lib.stats ? lib.stats.mediaItems === 0 : !lib.imported);
   if (emptyLibrary) steps.push({ tone: "warn", text: "Your media library is empty. Add a Plex, Jellyfin or Emby server, or a local folder, and scan it.", action: "Open library", page: "library" });
   if (emptyLibrary && config && config.legacyImport !== false && !config.etvDbPath) steps.push({ tone: "info", text: "Coming from ErsatzTV legacy? Point Settings at its database to import your library and channels.", action: "Open settings", page: "settings" });
   if (channels && list.length === 0) steps.push({ tone: "info", text: "No channels yet. Create your first one.", action: "Create a channel", page: "channels" });

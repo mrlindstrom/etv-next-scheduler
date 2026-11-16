@@ -233,7 +233,9 @@ function normalizeContent(entry: Record<string, any>): ContentDef {
     key: entry.key,
     kind,
     order: (entry.order ?? "shuffle") as PlaybackOrder,
-    query: entry.query,
+    // `search: <query>` is taken as the query too (legacy writes `search:` + `query:`);
+    // without this, the query was empty and matched the whole library
+    query: entry.query ?? (kind === "search" && typeof entry.search === "string" && entry.search.trim() ? entry.search : undefined),
     guids,
     collection: entry.collection ?? entry.multi_collection ?? entry.smart_collection,
     playlist: entry.playlist,

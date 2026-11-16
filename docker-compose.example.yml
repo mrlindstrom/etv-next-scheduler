@@ -1,0 +1,45 @@
+# tv-next-scheduler with Docker Compose. Copy this to docker-compose.yml, change
+# the paths marked below, then run:  docker compose up -d
+# and open http://<this computer>:8730. See docs/DOCKER.md for the details.
+services:
+  tv-next-scheduler:
+    build: .                     # or use an image you built/pulled: image: tv-next-scheduler
+    container_name: tv-next-scheduler
+    restart: unless-stopped
+    # Host networking lets Plex find the HDHomeRun tuner (it's discovered by
+    # broadcast) and gives the scheduler your computer's real address for
+    # channel logos and guide links. Linux only; see "Without host networking" below.
+    network_mode: host
+    environment:
+      TZ: America/New_York       # your time zone, for schedules and the guide
+      # PORT: "8730"             # the web UI's port
+      # PUBLIC_URL: http://192.168.1.20:8730   # needed without host networking
+    volumes:
+      - ./config:/config         # settings, library, channels, playouts, guide, programs
+      # Your media, mounted read-only. Add library folders in the web UI by
+      # these container paths (/media/...). If you use Plex/Jellyfin/Emby, mount
+      # it at the same path that server sees, so its file paths work here too.
+      - /path/to/media:/media:ro
+      # - /path/to/ramdisk:/transcode   # optional: point Streaming → output folder here
+    # Intel/AMD GPU encoding (VA-API / Quick Sync), Linux hosts only: uncomment both.
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # group_add:
+    #   - "render"               # or the numeric group of /dev/dri/renderD128 on the host
+    # NVIDIA GPU encoding (NVENC): uncomment. Works on Docker Desktop for Windows
+    # as is; on Linux it needs the NVIDIA Container Toolkit.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu, video, compute, utility]
+
+# Without host networking (Docker Desktop on Windows/macOS, or by choice): remove
+# network_mode above, add these ports, and set PUBLIC_URL to your computer's
+# address. Plex won't discover the tuner by itself; add it by address instead.
+#    ports:
+#      - "8730:8730"   # web UI
+#      - "8409:8409"   # ErsatzTV next: M3U, XMLTV and the streams
+#      - "5004:5004"   # HDHomeRun tuner (if turned on under Streaming)
