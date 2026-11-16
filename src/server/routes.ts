@@ -1,7 +1,7 @@
 import { appLog, pipeChildToLog } from "./app-log.js";
 import type { FastifyInstance } from "fastify";
 import { readdir, readFile, writeFile, mkdir, stat, unlink, rename } from "node:fs/promises";
-import { join, basename, extname } from "node:path";
+import { join, basename, extname, isAbsolute } from "node:path";
 import { loadPlayout } from "../yaml.js";
 import { SchedulingEngine } from "../engine.js";
 import { timeshiftSource } from "../index.js";
@@ -123,6 +123,25 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
 
   // --- ErsatzTV next process supervisor ---
   app.get("/api/next/runner", async () => nextRunner?.status() ?? { enabled: false, phase: "stopped" });
+  // Channels someone is watching: next touches <output>/<number>/.heartbeat on every
+  // playlist or segment request (players ask every few seconds) and ends a session
+  // 90 s after the last one, so a heartbeat in the last 20 s means a live viewer.
+  app.get("/api/next/watching", async () => {
+    const nc = store.getNextConfig();
+    const of = nc.outputFolder || "./output"; // absolute (e.g. a ramdisk) or under runtimeDir, as in nextgen
+    const out = isAbsolute(of) ? of : join(abs(nc.runtimeDir), of);
+    const at = Date.now();
+    const channels: { number: string; lastSeenSec: number }[] = [];
+    let dirs: string[] = [];
+    try { dirs = await readdir(out); } catch { return { channels }; }
+    await Promise.all(dirs.map(async (d) => {
+      try {
+        const age = (at - (await stat(join(out, d, ".heartbeat"))).mtimeMs) / 1000;
+        if (age < 20) channels.push({ number: d, lastSeenSec: Math.max(0, Math.round(age)) });
+      } catch { /* no session for this channel */ }
+    }));
+    return { channels };
+  });
   app.post("/api/next/start", async () => { await nextRunner?.start(true); return nextRunner?.status(); });
   app.post("/api/next/stop", async () => { nextRunner?.stop(true); return nextRunner?.status(); });
   app.post("/api/next/restart", async () => { await nextRunner?.restart(); return nextRunner?.status(); });

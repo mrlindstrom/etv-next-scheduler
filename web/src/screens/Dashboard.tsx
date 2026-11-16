@@ -27,6 +27,15 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
     return () => clearInterval(t);
   }, []);
 
+  // who's watching: checked more often than the rest so a tile lights up soon after a player starts
+  const [watching, setWatching] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    const poll = () => api.watching().then((w) => setWatching(new Set(w.channels.map((c) => c.number)))).catch(() => setWatching(null));
+    poll();
+    const t = window.setInterval(poll, 5000);
+    return () => clearInterval(t);
+  }, []);
+
   const now = Date.now();
   const days = config?.days ?? 3;
   const list = channels ?? [];
@@ -67,6 +76,7 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
         <Tile label="Channels" value={channels ? String(enabled.length) : "…"} sub={channels ? `${list.length - enabled.length} disabled${invalid.length ? ` · ${invalid.length} with errors` : ""}` : ""} onClick={() => navigate("channels")} tone={invalid.length ? "err" : ""} />
         <Tile label="Scheduled ahead" value={!channels ? "…" : known ? `${enabled.length - unbuilt.length}/${enabled.length}` : "–"} sub={!known ? (channels ? "restart the scheduler to see this" : "") : unbuilt.length ? `${unbuilt.length} with nothing on now` : "every channel is on air"} onClick={() => navigate("build")} tone={!known ? "" : unbuilt.length ? "warn" : "ok"} />
         <Tile label="Stream server" value={runner ? cap(runner.phase) : "…"} sub={runner ? (runner.phase === "running" ? `up ${uptime(runner.uptimeSec)}${runner.stale ? " · restart needed" : ""}` : runner.detail || "") : ""} onClick={() => navigate("streaming")} tone={runnerTone} />
+        <Tile label="Watching now" value={watching ? String(watching.size) : "…"} sub={!watching ? "" : watching.size === 0 ? "no one is streaming a channel" : names(list.filter((c) => watching.has(String(c.meta?.number ?? ""))))} onClick={() => navigate("streaming")} tone={watching?.size ? "ok" : ""} />
         <Tile label="Auto-build" value={sched ? (sched.enabled ? "On" : "Off") : "…"} sub={sched?.lastTick ? `checked ${new Date(sched.lastTick).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : `keeps ${days} days ahead`} onClick={() => navigate("build")} tone={sched?.enabled ? "ok" : ""} />
         <Tile label="Media items" value={lib?.stats ? lib.stats.mediaItems.toLocaleString() : lib ? "0" : "…"} sub={lib?.stats ? `${lib.stats.shows.toLocaleString()} shows · ${lib.stats.episodes.toLocaleString()} episodes` : lib ? "nothing scanned yet" : ""} onClick={() => navigate("library")} />
       </div>
@@ -109,12 +119,13 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
               const state = !c.valid ? "err" : off ? "off" : !known ? "" : h <= 0 ? "warn" : h < 24 ? "info" : "ok";
               const label = !c.valid ? "config error" : off ? "disabled" : !known ? (c.mode ?? "") : h <= 0 ? "not built" : `${h >= 48 ? `${Math.floor(h / 24)} days` : `${Math.floor(h)} h`} ahead`;
               const src = logoSrc(c.meta?.logo);
+              const live = !!watching?.has(String(c.meta?.number ?? ""));
               return (
-                <button key={c.name} className={`chan-tile ${state}`} onClick={() => navigate("channels", { c: c.name })} title={c.name}>
+                <button key={c.name} className={`chan-tile ${state}${live ? " watching" : ""}`} onClick={() => navigate("channels", { c: c.name })} title={live ? `${c.name}: someone is watching` : c.name}>
                   <div className="chan-logo">{src ? <img src={src} alt="" loading="lazy" /> : <span>{c.name.slice(0, 3)}</span>}</div>
                   <div className="chan-info">
                     <div className="chan-name"><span className="chnum">{c.meta?.number}</span> {c.name}</div>
-                    <div className={`chan-state ${state}`}>{label}</div>
+                    <div className={`chan-state ${state}`}>{live ? <span className="watching-label">● Watching now · {label}</span> : label}</div>
                   </div>
                 </button>
               );

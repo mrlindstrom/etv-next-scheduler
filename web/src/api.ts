@@ -208,6 +208,8 @@ export const api = {
   setNextConfig: (patch: Partial<NextConfig>): Promise<NextConfig> => fetch("/api/next-config", opts("PUT", patch)).then(j),
   applyNext: (): Promise<ApplyResult> => fetch("/api/next/apply", opts("POST")).then(j),
   nextRunner: (): Promise<NextRunnerStatus> => fetch("/api/next/runner").then(j),
+  /** Channel numbers someone is streaming right now (from next's heartbeat files). */
+  watching: (): Promise<{ channels: { number: string; lastSeenSec: number }[] }> => fetch("/api/next/watching").then(j),
   nextStart: (): Promise<NextRunnerStatus> => fetch("/api/next/start", opts("POST")).then(j),
   nextStop: (): Promise<NextRunnerStatus> => fetch("/api/next/stop", opts("POST")).then(j),
   nextRestart: (): Promise<NextRunnerStatus> => fetch("/api/next/restart", opts("POST")).then(j),

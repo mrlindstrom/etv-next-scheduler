@@ -184,7 +184,8 @@ export class Scheduler {
     // Note: the enabled flag controls scheduling inclusion, not scan freshness —
     // keep every library's mirror up to date regardless of whether it's enabled.
     const cutoff = Date.now() - c.autoScanHours * 3_600_000;
-    const stale = libs.filter((l) => l.sourceType === "local" && (!l.lastScan || Date.parse(l.lastScan) < cutoff));
+    // Remote Streams (kind 7) sits on the local source in legacy but has no folders to scan
+    const stale = libs.filter((l) => l.sourceType === "local" && l.kindId !== 7 && (!l.lastScan || Date.parse(l.lastScan) < cutoff));
     if (!stale.length) return;
     const ffprobe = this.store.getNextConfig().ffprobePath || "ffprobe";
     for (const l of stale) {
