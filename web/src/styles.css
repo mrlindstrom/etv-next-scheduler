@@ -315,6 +315,13 @@ table.compact { margin-top: 0; }
 table.compact td { padding: 7px 4px; }
 
 /* --- dashboard --- */
+/* Dashboard: the playlist and guide addresses for TV apps, click to copy */
+.feed-links { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-bottom: 14px; }
+.feed-link { display: flex; align-items: center; gap: 12px; min-width: 0; text-align: left; padding: 10px 14px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); }
+.feed-link:hover { background: var(--panel2); border-color: var(--line2); }
+.feed-label { flex: none; font-size: 12px; font-weight: 600; color: var(--muted); }
+.feed-url { flex: 1; min-width: 0; font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: all; }
+.feed-copy { flex: none; font-size: 12px; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .tile { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 16px 18px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); position: relative; overflow: hidden; }
 .tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--line2); }

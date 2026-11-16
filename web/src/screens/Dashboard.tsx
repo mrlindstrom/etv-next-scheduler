@@ -1,5 +1,5 @@
 // Home page: what state everything is in, and what to do next.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, logoSrc, type AppConfig, type ChannelSummary, type LibraryStatus, type NextRunnerStatus, type SchedulerStatus } from "../api.js";
 import { navigate, type Page } from "../nav.js";
 
@@ -73,6 +73,13 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
         </div>
       </div>
 
+      {runner && (
+        <div className="feed-links">
+          <FeedLink label="M3U playlist" url={`${nextBase(runner.port)}/channels.m3u`} />
+          <FeedLink label="XMLTV guide" url={`${nextBase(runner.port)}/xmltv.xml`} />
+        </div>
+      )}
+
       <div className="tiles">
         <Tile label="Channels" value={channels ? String(enabled.length) : "…"} sub={channels ? `${list.length - enabled.length} disabled${invalid.length ? ` · ${invalid.length} with errors` : ""}` : ""} onClick={() => navigate("channels")} tone={invalid.length ? "err" : ""} />
         <Tile label="Scheduled ahead" value={!channels ? "…" : known ? `${enabled.length - unbuilt.length}/${enabled.length}` : "–"} sub={!known ? (channels ? "restart the scheduler to see this" : "") : unbuilt.length ? `${unbuilt.length} with nothing on now` : "every channel is on air"} onClick={() => navigate("build")} tone={!known ? "" : unbuilt.length ? "warn" : "ok"} />
@@ -144,6 +151,45 @@ function Tile({ label, value, sub, onClick, tone = "" }: { label: string; value:
       <div className="tile-label">{label}</div>
       <div className="tile-value">{value}</div>
       {sub && <div className="tile-sub">{sub}</div>}
+    </button>
+  );
+}
+
+/** ErsatzTV next's address, on the host this page was opened with (so a TV app on
+ *  the same network can reach it), at next's own port. */
+const nextBase = (port: number) => `http://${window.location.hostname}:${port}`;
+
+/** Put text on the clipboard. The clipboard API only works on https or localhost,
+ *  and the dashboard is usually opened by a LAN address, so fall back to a hidden
+ *  text box and the copy command. */
+async function copyText(text: string): Promise<boolean> {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); return true; } } catch { /* try the fallback */ }
+  const box = document.createElement("textarea");
+  box.value = text; box.setAttribute("readonly", ""); box.style.position = "fixed"; box.style.opacity = "0";
+  document.body.appendChild(box);
+  box.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { /* not allowed */ }
+  box.remove();
+  return ok;
+}
+
+/** An address for TV apps, shown in full; click it to copy. */
+function FeedLink({ label, url }: { label: string; url: string }) {
+  const [state, setState] = useState<"" | "copied" | "failed">("");
+  const timer = useRef<number>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    const ok = await copyText(url);
+    setState(ok ? "copied" : "failed");
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState(""), 2000);
+  };
+  return (
+    <button className="feed-link" onClick={copy} title={`Copy the ${label} address`}>
+      <span className="feed-label">{label}</span>
+      <span className="feed-url mono">{url}</span>
+      <span className={`feed-copy ${state === "failed" ? "err" : state ? "ok" : "muted"}`}>{state === "copied" ? "Copied ✓" : state === "failed" ? "Select and copy it" : "Copy"}</span>
     </button>
   );
 }
