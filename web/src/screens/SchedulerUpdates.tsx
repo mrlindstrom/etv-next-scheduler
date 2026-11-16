@@ -14,6 +14,8 @@ export function SchedulerUpdates({ config, onSaved }: { config: AppConfig | null
   const [err, setErr] = useState("");
   const [restart, setRestart] = useState<{ boot: string; since: number; down: boolean } | null>(null);
   const restartRef = useRef(restart); restartRef.current = restart;
+  // the server process we last heard from: the restart can come and go between two polls
+  const bootRef = useRef(""); if (st?.bootId) bootRef.current = st.bootId;
 
   const load = (refresh = false) => {
     setChecking(refresh); setErr("");
@@ -29,11 +31,13 @@ export function SchedulerUpdates({ config, onSaved }: { config: AppConfig | null
       const r = restartRef.current;
       try {
         const s = await api.selfUpdate();
-        if (r && s.bootId !== r.boot) { window.location.reload(); return; } // a new server process: load the new web UI
+        const known = r?.boot ?? bootRef.current;
+        if (known && s.bootId !== known) { window.location.reload(); return; } // a new server process: load the new web UI
         setSt(s);
         if (s.job?.phase === "restarting" && !r) setRestart({ boot: s.bootId, since: Date.now(), down: false });
       } catch {
         if (r) setRestart({ ...r, down: true });
+        else if (bootRef.current) setRestart({ boot: bootRef.current, since: Date.now(), down: true }); // it went down before a poll saw "restarting"
       }
     }, 2000);
     return () => clearInterval(t);

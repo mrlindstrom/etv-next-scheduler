@@ -70,6 +70,13 @@ function wantsRefresh(req: any): boolean {
   return v === true || v === "1" || v === "true";
 }
 
+/** Splits a child's stdout into whole lines: a chunk can end mid-line, so the
+ *  unfinished part waits for the next chunk. */
+function lineCarry(): (d: unknown) => string[] {
+  let rest = "";
+  return (d) => { const parts = (rest + String(d)).split("\n"); rest = parts.pop() ?? ""; return parts; };
+}
+
 // Parse a chunk of scan-remote CLI stdout into the shared scanJob progress.
 function remoteScanLine(chunk: string): void {
   for (const line of chunk.split("\n")) {
@@ -167,12 +174,20 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (!cfg.legacyImport) { reply.code(409); return { error: "ErsatzTV legacy import is turned off. Turn it back on on the Connect tab if you need it." }; }
     if (!cfg.etvDbPath) return { error: "Set the ErsatzTV DB path on the Connect tab first." };
     const libPath = abs(cfg.libraryDbPath);
-    dropResolver(libPath); // release any open (immutable) handle to the old library
+    if (scanJob.running || deepJob.running) { reply.code(409); return { error: "A library scan is running. Wait for it to finish, then import." }; }
+    if (buildService.busy) { reply.code(409); return { error: "A build is running. Wait for it to finish, then import." }; }
+    importJob = { running: true, done: false, error: null, index: 0, total: 0, table: "", result: null, startedAt: Date.now() };
+    // the search index and the build worker keep the library open: let go of it so
+    // the file can be replaced (the index starts again when the import ends)
+    dropResolver(libPath);
+    await indexService.release();
+    await buildService.release();
     importJob = { running: true, done: false, error: null, index: 0, total: 0, table: "", result: null, startedAt: Date.now() };
     const child = spawn(process.execPath, [join(ROOT, "dist", "cli.js"), "import-library", "--from", cfg.etvDbPath, "--to", libPath, "--force"], { cwd: ROOT }); // the route already checked legacyImport
     pipeChildToLog(child, "import");
+    const stdoutLines = lineCarry();
     child.stdout.on("data", (d) => {
-      for (const line of String(d).split("\n")) {
+      for (const line of stdoutLines(d)) {
         const m = line.match(/^IMPORT (\d+)\/(\d+) (\S+) \((\d+)\)/);
         if (m) { importJob.index = +m[1]; importJob.total = +m[2]; importJob.table = m[3]; }
         const dm = line.match(/^DONE: (\d+) tables, (\d+) rows/);
@@ -184,9 +199,9 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
       importJob.running = false; importJob.done = code === 0;
       if (code !== 0 && !importJob.error) importJob.error = `exit ${code}`;
       dropResolver(libPath); // force a fresh (non-stale) handle to the imported library
-      if (code === 0) indexService.start(libPath, "the library was imported");
+      indexService.start(libPath, code === 0 ? "the library was imported" : undefined); // a failed import left the old library in place
     });
-    child.on("error", (e) => { importJob.running = false; importJob.error = String(e); });
+    child.on("error", (e) => { importJob.running = false; importJob.error = String(e); indexService.start(libPath); });
     return importJob;
   });
 
@@ -334,7 +349,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
       if (wantsRefresh(req)) args.push("--refresh-metadata");
       const child = spawn(process.execPath, args, { cwd: ROOT });
       pipeChildToLog(child, "scan");
-      child.stdout.on("data", (d) => remoteScanLine(String(d)));
+      const scanLines = lineCarry();
+      child.stdout.on("data", (d) => { for (const line of scanLines(d)) remoteScanLine(line); });
       child.stderr.on("data", (d) => { const s = String(d); if (!/Experimental|trace-warnings/.test(s)) scanJob.error = (scanJob.error ?? "") + s; });
       child.on("close", (code) => { scanJob.running = false; scanJob.done = code === 0; if (code !== 0 && !scanJob.error) scanJob.error = `exit ${code}`; indexService.changed(); });
       child.on("error", (e) => { scanJob.running = false; scanJob.error = String(e); });
@@ -346,8 +362,9 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const ffprobe = store.getNextConfig().ffprobePath || "ffprobe";
     const child = spawn(process.execPath, [join(ROOT, "dist", "cli.js"), "scan-library", "--library", String(id), "--db", path, "--ffprobe", ffprobe], { cwd: ROOT });
     pipeChildToLog(child, "scan");
+    const stdoutLines = lineCarry();
     child.stdout.on("data", (d) => {
-      for (const line of String(d).split("\n")) {
+      for (const line of stdoutLines(d)) {
         const wm = line.match(/^WALKED (\d+)$/);
         if (wm) scanJob.total = +wm[1];
         const m = line.match(/^SCAN (\d+)\/(\d+) \+(\d+) ~(\d+) ?(.*)$/);
@@ -468,7 +485,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (wantsRefresh(req)) remoteArgs.push("--refresh-metadata");
     const child = spawn(process.execPath, remoteArgs, { cwd: ROOT });
     pipeChildToLog(child, "scan");
-    child.stdout.on("data", (d) => remoteScanLine(String(d)));
+    const scanLines = lineCarry();
+    child.stdout.on("data", (d) => { for (const line of scanLines(d)) remoteScanLine(line); });
     child.stderr.on("data", (d) => { const s = String(d); if (!/Experimental|trace-warnings/.test(s)) scanJob.error = (scanJob.error ?? "") + s; });
     child.on("close", (code) => { scanJob.running = false; scanJob.done = code === 0; if (code !== 0 && !scanJob.error) scanJob.error = `exit ${code}`; indexService.changed(); });
     child.on("error", (e) => { scanJob.running = false; scanJob.error = String(e); });
@@ -510,6 +528,14 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     // channels refer to it by name: carry the rename over to them
     const to = typeof b.name === "string" ? b.name.trim() : undefined;
     const channels = before && to && to !== before ? await renameInChannels(abs(store.get().channelsDir), type, before, to) : [];
+    // the pod library too: pod channels are refreshed from it on every build
+    if (before && to && to !== before) {
+      const oldRef = JSON.stringify(`${type}::${before}`), newRef = JSON.stringify(`${type}::${to}`);
+      for (const pod of store.listPods()) {
+        const text = JSON.stringify(pod.config ?? {});
+        if (text.includes(oldRef)) store.savePod({ id: pod.id, name: pod.name, type: pod.type, config: JSON.parse(text.split(oldRef).join(newRef)) });
+      }
+    }
     return { ok: true, channels };
   });
   // the tags on the items of a filler source (libraries, or a collection), for the
@@ -679,8 +705,9 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const ffprobe = store.getNextConfig().ffprobePath || "ffprobe";
     const child = spawn(process.execPath, [join(ROOT, "dist", "cli.js"), "deep-scan", "--type", type, "--id", String(id), "--db", path, "--ffprobe", ffprobe], { cwd: ROOT });
     pipeChildToLog(child, "deep-scan");
+    const stdoutLines = lineCarry();
     child.stdout.on("data", (d) => {
-      for (const line of String(d).split("\n")) {
+      for (const line of stdoutLines(d)) {
         const m = line.match(/^DEEP (\d+)\/(\d+) ?(.*)$/);
         if (m) { deepJob.done_ = +m[1]; deepJob.total = +m[2]; deepJob.current = m[3]; }
         const dm = line.match(/^DONE: targets (\d+), refreshed (\d+), failed (\d+), chapters (\d+)/);
@@ -1194,6 +1221,9 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (/^\.+$/.test(name.trim()) || /[. ]$/.test(name)) return "A channel name can't be only dots, or end with a dot or a space.";
     return null;
   };
+  /** The guide channel's files are named "guide", so a channel can't take that name. */
+  const reservedChannelName = (name: string): string | null =>
+    name.trim().toLowerCase() === "guide" ? `"${name.trim()}" is used by the guide channel. Pick another name.` : null;
 
   // delete a channel: YAML + registry row + generated runtime config + outputs
   app.delete("/api/channels/:name", async (req, reply) => {
@@ -1230,7 +1260,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const b = (req.body ?? {}) as { to?: string; keepGuideId?: boolean };
     const to = String(b.to ?? "").trim();
     if (!to) { reply.code(400); return { error: "Enter a new name." }; }
-    if (/[\\/:*?"<>|]/.test(to)) { reply.code(400); return { error: `A channel name can't contain \\ / : * ? " < > |` }; }
+    const badTo = badChannelName(to) ?? reservedChannelName(to);
+    if (badTo) { reply.code(400); return { error: badTo }; }
     if (to === from) return { name: to, meta: store.channelMeta(to) };
     const cfg = store.get();
     const dir = abs(cfg.channelsDir);
@@ -1317,7 +1348,7 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const b = (req.body ?? {}) as { name?: string; mode?: string; config?: string };
     const name = String(b.name ?? "").trim();
     const { mode, config } = b;
-    const bad = badChannelName(name);
+    const bad = badChannelName(name) ?? reservedChannelName(name);
     if (bad) { reply.code(400); return { error: bad }; }
     const mod = moduleById(mode ?? "yaml") ?? moduleById("yaml")!;
     const dir = abs(store.get().channelsDir);

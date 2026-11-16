@@ -171,8 +171,8 @@ export const api = {
   installSelfUpdate: (): Promise<SelfUpdateStatus | { error: string }> => fetch("/api/self-update/install", opts("POST")).then((r) => r.json()),
   verify: (path?: string): Promise<VerifyResult> => fetch("/api/db/verify", opts("POST", { path })).then(j),
   channels: (): Promise<ChannelSummary[]> => fetch("/api/channels").then(j),
-  channel: (name: string): Promise<ChannelDoc> => fetch(`/api/channels/${name}`).then(j),
-  saveChannel: (name: string, config: string) => fetch(`/api/channels/${name}`, opts("PUT", { config })).then(j),
+  channel: (name: string): Promise<ChannelDoc> => fetch(`/api/channels/${encodeURIComponent(name)}`).then(j),
+  saveChannel: (name: string, config: string) => fetch(`/api/channels/${encodeURIComponent(name)}`, opts("PUT", { config })).then(j),
   createChannel: (name: string, mode?: string) => fetch("/api/channels", opts("POST", { name, mode })).then(j),
   legacyChannels: (also?: string): Promise<{ sources?: string[]; usedNumbers?: Record<string, string>; channels?: LegacyChannelPlan[]; error?: string }> => fetch(`/api/legacy/channels${also ? `?also=${encodeURIComponent(also)}` : ""}`).then(j),
   importLegacyChannels: (keys: string[], overwrite: boolean, also?: string, numbers?: Record<string, string>): Promise<{ imported?: { name: string; file: string }[]; skipped?: { name: string; reason: string }[]; error?: string }> => fetch("/api/legacy/channels/import", opts("POST", { keys, overwrite, also, numbers })).then(j),
@@ -180,7 +180,7 @@ export const api = {
   schedulingModules: (): Promise<SchedulingModuleInfo[]> => fetch("/api/scheduling/modules").then(j),
   probeRemote: (config: string): Promise<RemoteProbe> => fetch("/api/remote/probe", opts("POST", { config })).then(j),
   fileExists: (path: string): Promise<{ exists: boolean }> => fetch(`/api/file-exists?path=${encodeURIComponent(path)}`).then(j),
-  setChannelMeta: (name: string, patch: Partial<ChannelMeta>): Promise<ChannelMeta> => fetch(`/api/channels/${name}/meta`, opts("PUT", patch)).then(j),
+  setChannelMeta: (name: string, patch: Partial<ChannelMeta>): Promise<ChannelMeta> => fetch(`/api/channels/${encodeURIComponent(name)}/meta`, opts("PUT", patch)).then(j),
   uploadChannelLogo: (name: string, file: File): Promise<ChannelMeta> =>
     fetch(`/api/channels/${encodeURIComponent(name)}/logo`, { method: "POST", headers: { "Content-Type": file.type && file.type.startsWith("image/") ? file.type : "image/png" }, body: file }).then(j),
   uploadGuideLogo: (file: File): Promise<NextConfig> =>
@@ -193,10 +193,10 @@ export const api = {
   logoAddress: (): Promise<{ publicUrl: string; auto: string; effective: string }> => fetch("/api/logos/address").then(j),
   importLegacyLogos: (names?: string[], replace = false, also?: string): Promise<{ updated: string[]; missing: string[]; error?: string }> =>
     fetch("/api/legacy/channels/logos", opts("POST", { names, replace, also })).then(j),
-  resetChannelProgress: (name: string): Promise<{ ok: boolean }> => fetch(`/api/channels/${name}/reset-progress`, opts("POST")).then(j),
+  resetChannelProgress: (name: string): Promise<{ ok: boolean }> => fetch(`/api/channels/${encodeURIComponent(name)}/reset-progress`, opts("POST")).then(j),
   renameChannel: (name: string, to: string, keepGuideId: boolean): Promise<{ name?: string; meta?: ChannelMeta; timeshiftUpdated?: string[]; error?: string }> =>
     fetch(`/api/channels/${encodeURIComponent(name)}/rename`, opts("POST", { to, keepGuideId })).then((r) => r.json()),
-  deleteChannel: (name: string) => fetch(`/api/channels/${name}`, opts("DELETE")).then(j),
+  deleteChannel: (name: string) => fetch(`/api/channels/${encodeURIComponent(name)}`, opts("DELETE")).then(j),
   upNextThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/upnext/themes").then(j),
   guideThemes: (): Promise<{ id: string; label: string }[]> => fetch("/api/guide/themes").then(j),
   guideCheck: (): Promise<{ ffmpeg: string; found: boolean; drawtext: boolean }> => fetch("/api/guide/check").then(j),
@@ -286,8 +286,8 @@ export const api = {
   job: (id: string): Promise<BuildJob> => fetch(`/api/build/${id}`).then(j),
   builds: () => fetch("/api/builds").then(j),
   coverage: (): Promise<Record<string, string | null>> => fetch("/api/coverage").then(j),
-  playouts: (channel: string): Promise<PlayoutWindow[]> => fetch(`/api/playouts/${channel}`).then(j),
-  playout: (channel: string, file: string): Promise<PlayoutView> => fetch(`/api/playouts/${channel}/${file}`).then(j),
+  playouts: (channel: string): Promise<PlayoutWindow[]> => fetch(`/api/playouts/${encodeURIComponent(channel)}`).then(j),
+  playout: (channel: string, file: string): Promise<PlayoutView> => fetch(`/api/playouts/${encodeURIComponent(channel)}/${encodeURIComponent(file)}`).then(j),
   scheduler: (): Promise<SchedulerStatus> => fetch("/api/scheduler").then(j),
   schedulerRun: (): Promise<SchedulerStatus> => fetch("/api/scheduler/run", opts("POST")).then(j),
   overlays: (): Promise<{ overlays: Overlay[]; fields: OverlayField[]; slots?: string[]; usedBy: Record<string, string[]> }> => fetch("/api/overlays").then(j),

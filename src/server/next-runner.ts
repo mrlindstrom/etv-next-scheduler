@@ -151,7 +151,9 @@ export class NextRunner {
   }
 
   async start(manual: boolean): Promise<void> {
-    if (this.proc) return;
+    // one start at a time: a second call while settings are being applied would
+    // launch a second ErsatzTV next
+    if (this.proc || this.phase === "starting") return;
     this.manualStop = false;
     const bin = this.binaryPath();
     if (!existsSync(bin)) { this.phase = "waiting"; this.detail = `binary not found: ${bin}`; return; }
@@ -169,6 +171,8 @@ export class NextRunner {
     this.phase = "starting"; this.detail = "applying settings…";
     try { await generateNext(this.store, this.root); }
     catch (e) { this.note(`apply failed: ${(e as Error).message}`); }
+    // stopped (or switched off) while the settings were being applied
+    if (this.manualStop || (!manual && !this.store.get().keepNextRunning)) { this.phase = "stopped"; this.detail = this.manualStop ? "stopped" : "disabled"; return; }
 
     const nc = this.store.getNextConfig();
     const runtimeDir = abs(this.root, nc.runtimeDir);
@@ -189,6 +193,7 @@ export class NextRunner {
     child.stderr?.on("data", (d) => this.note(String(d)));
     child.on("error", (e) => { this.note(`process error: ${String(e)}`); });
     child.on("exit", (code, signal) => {
+      if (this.proc !== child) { this.note(`an earlier process (pid ${child.pid}) exited`); return; } // not the one being run now
       this.proc = null;
       this.lastExit = { code, signal, at: Date.now() };
       const ranAWhile = Date.now() - this.startedAt > 30_000;
@@ -214,7 +219,7 @@ export class NextRunner {
     this.manualStop = manual;
     this.nextAllowedStart = 0;
     if (this.proc) { try { this.proc.kill(); } catch { /* already gone */ } }
-    else { this.phase = "stopped"; this.detail = manual ? "stopped" : "disabled"; }
+    else if (this.phase !== "starting") { this.phase = "stopped"; this.detail = manual ? "stopped" : "disabled"; } // a start in flight sees manualStop and stops itself
   }
 
   async restart(): Promise<void> {

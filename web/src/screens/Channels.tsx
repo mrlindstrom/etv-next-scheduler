@@ -60,6 +60,7 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
   };
   const [newCh, setNewCh] = useState({ name: "", mode: "schedule" });
   const [msg, setMsg] = useState("");
+  const [createErr, setCreateErr] = useState(""); // why the new-channel form couldn't create it
   const [pane, setPane] = useState<"schedule" | "settings" | "logo">("schedule");
   const [filter, setFilter] = useState("");
   const [building, setBuilding] = useState(false);
@@ -153,8 +154,8 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
     const name = newCh.name.trim();
     if (!name) return;
     try { await api.createChannel(name, newCh.mode); }
-    catch (e) { let t = String((e as Error).message ?? e); try { t = JSON.parse(t).error ?? t; } catch { /* plain text */ } setMsg(`Error: ${t}`); return; }
-    setCreating(false); setNewCh({ name: "", mode: "schedule" }); open(name, await refresh());
+    catch (e) { let t = String((e as Error).message ?? e); try { t = JSON.parse(t).error ?? t; } catch { /* plain text */ } setCreateErr(t); return; }
+    setCreateErr(""); setCreating(false); setNewCh({ name: "", mode: "schedule" }); open(name, await refresh());
   };
   // logos are saved as soon as they're uploaded/removed (not with "Save channel settings")
   const [logoBusy, setLogoBusy] = useState(false);
@@ -244,14 +245,15 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
         <div className="pane-head"><h2>Channels</h2><div>{legacyImport && <><button onClick={() => { setImporting((v) => !v); setSel(null); }} title="Import channels and their Classic, Block and YAML schedules from ErsatzTV legacy">{importing ? "Close import" : "Import…"}</button> </>}<button onClick={() => setCreating((v) => !v)}>{creating ? "Cancel" : "+ New"}</button></div></div>
         {creating && (
           <div className="meta-card" style={{ marginBottom: 10 }}>
-            <label>Name<input value={newCh.name} onChange={(e) => setNewCh({ ...newCh, name: e.target.value })} placeholder="Saturday Mornings" /></label>
+            <label>Name<input value={newCh.name} onChange={(e) => { setNewCh({ ...newCh, name: e.target.value }); setCreateErr(""); }} placeholder="Saturday Mornings" /></label>
             <label>Scheduling mode
               <select value={newCh.mode} onChange={(e) => setNewCh({ ...newCh, mode: e.target.value })}>
                 {modules.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </label>
             <p className="muted" style={{ fontSize: 12 }}>{modules.find((m) => m.id === newCh.mode)?.description}</p>
-            <div className="actions"><button className="primary" onClick={create} disabled={!newCh.name}>Create</button></div>
+            {createErr && <p className="err" style={{ fontSize: 12 }}>⚠ {createErr}</p>}
+            <div className="actions"><button className="primary" onClick={create} disabled={!newCh.name.trim()}>Create</button></div>
           </div>
         )}
         {list.length === 0 && !creating && <p className="muted">No channels yet. {legacyImport ? <><button onClick={() => { setImporting(true); setSel(null); }}>Import from ErsatzTV legacy…</button> or create</> : "Create"} one with + New.</p>}

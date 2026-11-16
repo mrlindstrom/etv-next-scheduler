@@ -5,8 +5,10 @@
 // -----------------------------------------------------------------------------
 import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
 
-const MAX_BYTES = 512 * 1024;   // trim the file when it grows past this
-const KEEP_LINES = 2000;        // ...back down to this many lines
+// The same limits as app-log.ts, which writes the same file: a smaller limit here
+// would cut the app log's history short every time this trimmed.
+const MAX_BYTES = 8 * 1024 * 1024;   // trim the file when it grows past this
+const KEEP_LINES = 20_000;           // ...back down to this many lines
 
 /** Append one timestamped line. Best-effort: logging never throws. */
 export async function logLine(logFile: string, msg: string): Promise<void> {

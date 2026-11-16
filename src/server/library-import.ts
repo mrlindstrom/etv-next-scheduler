@@ -71,16 +71,43 @@ function uri(p: string): string {
 }
 
 export function importLibrary(srcPath: string, destPath: string, onProgress?: (p: ImportProgress) => void): ImportResult {
-  const t0 = Date.now();
-  // start clean so a re-import fully replaces
-  for (const suffix of ["", "-wal", "-shm"]) { try { if (existsSync(destPath + suffix)) unlinkSync(destPath + suffix); } catch {} }
+  // Built beside the library and moved over it at the end, so a failed or
+  // interrupted import leaves the existing library as it was.
+  const tmp = `${destPath}.importing`;
+  const clearTmp = () => { for (const suffix of ["", "-wal", "-shm", "-journal"]) { try { unlinkSync(tmp + suffix); } catch { /* none */ } } };
+  clearTmp();
+  mkdirSync(dirname(destPath), { recursive: true });
+  let res: ImportResult;
+  try { res = importInto(srcPath, tmp, onProgress); }
+  catch (e) { clearTmp(); throw e; }
+  try {
+    renameSync(tmp, destPath);
+  } catch (e) {
+    clearTmp();
+    throw new Error(`Couldn't replace the library file (${(e as Error).message}). Something still has it open; the existing library was left as it was. Try again in a moment.`);
+  }
+  // the old library's side files belong to the file that was replaced
+  for (const suffix of ["-wal", "-shm", "-journal"]) { try { unlinkSync(destPath + suffix); } catch { /* none */ } }
+  return { ...res, dest: destPath };
+}
 
+function importInto(srcPath: string, destPath: string, onProgress?: (p: ImportProgress) => void): ImportResult {
   const src = new DatabaseSync(uri(srcPath), { readOnly: true });
-  const dest = new DatabaseSync(destPath);
+  try {
+    const dest = new DatabaseSync(destPath);
+    // closed on a failure too, so the half-made file can be removed (Windows keeps open files)
+    try { return copyLibrary(src, dest, destPath, onProgress); }
+    finally { try { dest.close(); } catch { /* already closed */ } }
+  } finally { try { src.close(); } catch { /* already closed */ } }
+}
+
+function copyLibrary(src: DatabaseSync, dest: DatabaseSync, destPath: string, onProgress?: (p: ImportProgress) => void): ImportResult {
+  const t0 = Date.now();
   dest.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA foreign_keys = OFF;");
 
   const allTables: string[] = (src.prepare(`SELECT name, sql FROM sqlite_master WHERE type='table'`).all() as any[])
     .filter((r) => includeTable(r.name)).map((r) => r.name);
+  if (!allTables.includes("MediaItem")) throw new Error("That file isn't an ErsatzTV database: it has no media library tables.");
 
   // 1) create tables (schema mirrored verbatim)
   const createStmt = src.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name=?`);
@@ -118,6 +145,5 @@ export function importLibrary(srcPath: string, destPath: string, onProgress?: (p
   }
 
   dest.exec("PRAGMA optimize;");
-  src.close(); dest.close();
   return { tables: allTables.length, rows: totalRows, ms: Date.now() - t0, dest: destPath, perTable };
 }

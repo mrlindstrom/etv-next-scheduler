@@ -46,6 +46,18 @@ class BuildService {
     return w;
   }
 
+  /** A build is running. */
+  get busy(): boolean { return this.handlers.size > 0; }
+
+  /** Let go of the library file (the idle worker keeps it open for its warm index)
+   *  so it can be replaced; the next build starts a fresh worker. */
+  async release(): Promise<void> {
+    if (this.busy) return;
+    const w = this.worker;
+    this.worker = undefined;
+    if (w) { w.removeAllListeners("exit"); w.removeAllListeners("error"); await w.terminate(); }
+  }
+
   /** Run a build job. `onMessage` receives log/result/error messages as they
    *  arrive; the promise resolves when the worker reports `done`. */
   run(req: BuildRequestInput, onMessage: (m: BuildMessage) => void): Promise<void> {
