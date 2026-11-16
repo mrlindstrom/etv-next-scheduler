@@ -148,11 +148,13 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
     }
     catch (e) { let t = String((e as Error).message ?? e); try { t = JSON.parse(t).error ?? t; } catch { /* plain text */ } setMsg(`Error: ${t}`); }
   };
-  const del = async () => { if (!sel) return; if (!confirm(`Delete channel "${sel}"? This removes its config and guide.`)) return; await api.deleteChannel(sel); setSel(null); setMeta(null); refresh(); };
+  const del = async () => { if (!sel) return; if (!confirm(`Delete channel "${sel}"? This removes its config, guide and built schedule.`)) return; await api.deleteChannel(sel); setSel(null); setMeta(null); refresh(); };
   const create = async () => {
-    if (!newCh.name) return;
-    await api.createChannel(newCh.name, newCh.mode);
-    setCreating(false); setNewCh({ name: "", mode: "schedule" }); open(newCh.name, await refresh());
+    const name = newCh.name.trim();
+    if (!name) return;
+    try { await api.createChannel(name, newCh.mode); }
+    catch (e) { let t = String((e as Error).message ?? e); try { t = JSON.parse(t).error ?? t; } catch { /* plain text */ } setMsg(`Error: ${t}`); return; }
+    setCreating(false); setNewCh({ name: "", mode: "schedule" }); open(name, await refresh());
   };
   // logos are saved as soon as they're uploaded/removed (not with "Save channel settings")
   const [logoBusy, setLogoBusy] = useState(false);

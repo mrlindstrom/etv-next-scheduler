@@ -73,11 +73,21 @@ function chronoSort(items: MediaItem[]): MediaItem[] {
   });
 }
 
+/** A shuffled list is dealt again each time round. The saved position carries
+ *  which round it is (round * ROUND + cursor), so the next build deals the same
+ *  shuffle the cursor was in. Round 0 is a plain cursor. */
+const ROUND = 10_000_000;
+
 /** Stateful cursor over a content list honoring a playback order. */
 export class Enumerator {
   private cursor = 0;
+  private round = 0;
+  /** Items a promotion jumped (pack mode): still next in line, ahead of the cursor. */
+  private held: MediaItem[] = [];
   private ordered: MediaItem[];
   private rng: () => number;
+  private readonly baseSeed: number;
+  private readonly reshuffles: boolean;
 
   constructor(
     public readonly key: string,
@@ -85,44 +95,69 @@ export class Enumerator {
     private readonly order: PlaybackOrder,
     seed = 1,
     startCursor = 0,
+    /** positions (in the ordered list) of the items still held from the last build */
+    startHeld: number[] = [],
   ) {
-    this.rng = mulberry32(seed + hashKey(key));
+    this.baseSeed = seed + hashKey(key);
+    this.reshuffles = order === "shuffle" || order === "random";
+    if (this.reshuffles && startCursor >= ROUND) this.round = Math.floor(startCursor / ROUND);
+    this.rng = mulberry32(this.roundSeed());
     this.ordered = this.applyOrder(items);
     // resume where a previous build left off (per-show progress / no-repeat)
-    if (this.ordered.length) this.cursor = ((startCursor % this.ordered.length) + this.ordered.length) % this.ordered.length;
+    const n = this.ordered.length;
+    if (n) this.cursor = (((startCursor % ROUND) % n) + n) % n;
+    for (const i of startHeld) { const it = this.ordered[i]; if (it && !this.held.includes(it)) this.held.push(it); }
   }
+
+  /** Each round's shuffle has its own seed, so any round can be dealt again directly. */
+  private roundSeed(): number { return (this.baseSeed + Math.imul(this.round, 0x9e3779b1)) | 0; }
 
   get size(): number { return this.ordered.length; }
   get isEmpty(): boolean { return this.ordered.length === 0; }
-  /** Current position in the ordered list (persist this to resume next build). */
-  get position(): number { return this.cursor; }
+  /** Current position (persist this to resume next build). */
+  get position(): number { return this.round * ROUND + this.cursor; }
+  /** Positions of the held items (persist these with the position). */
+  get heldPositions(): number[] { return this.held.map((it) => this.ordered.indexOf(it)).filter((i) => i >= 0); }
 
-  peek(): MediaItem | undefined { return this.ordered[this.cursor]; }
+  peek(): MediaItem | undefined { return this.held[0] ?? this.ordered[this.cursor]; }
 
   /** The item `ahead` places after the next one (0 = the next one). */
   peekAt(ahead: number): MediaItem | undefined {
-    if (!this.ordered.length || ahead >= this.ordered.length) return undefined;
-    return this.ordered[(this.cursor + ahead) % this.ordered.length];
+    const n = this.ordered.length;
+    if (!n || ahead >= n) return undefined;
+    if (ahead < this.held.length) return this.held[ahead];
+    return this.ordered[(this.cursor + ahead - this.held.length) % n];
   }
 
-  /** Move the item `ahead` places along up to the cursor, so it plays next and
-   *  the items it jumped stay next in line, in their order. */
+  /** Move the item `ahead` places along to the front, so it plays next and the
+   *  items it jumped stay next in line, in their order. */
   promote(ahead: number): void {
     const n = this.ordered.length;
     if (ahead <= 0 || ahead >= n) return;
-    const i = (this.cursor + ahead) % n;
-    const [item] = this.ordered.splice(i, 1);
-    if (i < this.cursor) this.cursor--; // removed from before the cursor (wrapped round)
-    this.ordered.splice(this.cursor, 0, item);
+    if (ahead < this.held.length) { const [it] = this.held.splice(ahead, 1); this.held.unshift(it); return; }
+    const jumped: MediaItem[] = [];
+    for (let i = this.held.length; i < ahead; i++) jumped.push(this.take()!);
+    const item = this.take()!;
+    this.held = [item, ...this.held, ...jumped];
   }
 
   next(): MediaItem | undefined {
     if (this.ordered.length === 0) return undefined;
+    if (this.held.length) return this.held.shift();
+    return this.take();
+  }
+
+  /** The next item of the list itself (past any held ones), moving the cursor on. */
+  private take(): MediaItem | undefined {
     const item = this.ordered[this.cursor];
+    const h = this.held.indexOf(item);
+    if (h >= 0) this.held.splice(h, 1); // the list came all the way round to a held item
     this.cursor++;
     if (this.cursor >= this.ordered.length) {
       this.cursor = 0;
-      if (this.order === "shuffle" || this.order === "random") {
+      if (this.reshuffles) {
+        this.round++;
+        this.rng = mulberry32(this.roundSeed());
         this.ordered = this.applyOrder(this.items); // reshuffle each cycle
       }
     }

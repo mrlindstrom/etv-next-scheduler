@@ -133,11 +133,11 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     // (legacy post-roll pad) breaks aren't budgeted and the item pads to the
     // next barrier after it finishes.
     const grouped = b.inGuide !== false;
-    if (grouped) playout.push({ op: "epg_group", value: true });
-    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", customTitle: b.title, fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined, stretchBreaks: b.stretchBreaks !== false });
+    if (grouped) playout.push({ op: "epg_group", value: true, title: b.title?.trim() || undefined });
+    if (b.fill === "count") playout.push({ op: "count", content: key, count: Math.max(1, b.count ?? 1), fillerKind: grouped ? undefined : "postroll", fitMinutes: barrier > 0 && b.alignFit !== false ? barrier : undefined, stretchBreaks: b.stretchBreaks !== false });
     // a chosen end-of-block filler also fills what's left of a "Play N minutes" block
     else if (b.fill === "duration") playout.push({ op: "duration", content: key, duration: `${Math.max(1, b.minutes ?? 30)} minutes`, fallback: fallbackKey, tail: tailFrom && padKey ? padKey : undefined });
-    else playout.push({ op: "pad_until", content: key, when: "00:00", tomorrow: true }); // flood to end of day
+    else playout.push({ op: "pad_until", content: key, when: "00:00", tomorrow: true, flood: true, fillerKind: grouped ? undefined : "postroll" }); // flood to end of day
     if (b.preRoll) playout.push({ op: "pre_roll_off" });
 
     // clock alignment: pad the block's end to the next barrier using the filler.

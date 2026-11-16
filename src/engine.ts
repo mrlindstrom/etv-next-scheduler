@@ -110,6 +110,7 @@ export class SchedulingEngine {
   private guide: GuideEntry[] = [];
   private groupStartMs: number | null = null;
   private groupItem: MediaItem | null = null;
+  private groupTitle: string | undefined; // a custom guide title for the open group
   private lastYieldMs = 0; // wall-clock of the last event-loop yield (cooperative)
   private hasExplicitUpNext = false; // doc places up_next itself -> suppress auto end-of-break card
   private upNextCards: UpNextCard[] = []; // subtitles-mode cards to attach an .ass to post-build
@@ -148,13 +149,17 @@ export class SchedulingEngine {
 
     let guard = 0;
     let pass = 0;
+    let idle = 0; // passes in a row that placed nothing and didn't move the clock
     do {
       const start = pass === 0 ? 0 : lead;
+      const before = this.nowMs, count = this.items.length;
       for (let k = start; k < body.length; k++) {
         await this.exec(body[k]);
         if (this.done()) break;
       }
       pass++;
+      idle = this.nowMs === before && this.items.length === count ? idle + 1 : 0;
+      if (idle >= 100) break;    // stuck: nothing more will fit
       if (++guard > 4000) break; // safety
     } while (repeats && !this.done());
 
@@ -193,7 +198,21 @@ export class SchedulingEngine {
     const wd = localWeekday(now, this.opts.tz);
     const min = Math.floor(p.msOfDay / 60000);
     const y = p.y, mo = p.mo + 1, day = p.da; // localParts.mo is 0-based
+    let prev: { wd: number; y: number; mo: number; da: number } | null = null; // yesterday, worked out when needed
     for (const d of this.doc.dayparts) {
+      if (d.toMin < d.fromMin) {
+        // runs past midnight (22:00 to 02:00): the evening belongs to today, the
+        // small hours to the day it started on
+        if (min >= d.fromMin) { if (d.days.includes(wd) && dateMatches(d, y, mo, day)) return d; continue; }
+        if (min >= d.toMin) continue;
+        if (!prev) {
+          const noon = localToEpoch(p.y, p.mo, p.da - 1, 12, 0, this.opts.tz);
+          const q = localParts(noon, this.opts.tz);
+          prev = { wd: localWeekday(noon, this.opts.tz), y: q.y, mo: q.mo + 1, da: q.da };
+        }
+        if (d.days.includes(prev.wd) && dateMatches(d, prev.y, prev.mo, prev.da)) return d;
+        continue;
+      }
       if (!d.days.includes(wd)) continue;
       if (min < d.fromMin || min >= d.toMin) continue;
       if (!dateMatches(d, y, mo, day)) continue;
@@ -264,9 +283,17 @@ export class SchedulingEngine {
    *  missing from the guide, leaving a hole at the window boundary in the EPG. */
   private flushGuide(): void {
     if (this.groupStartMs != null && this.groupItem && this.nowMs > this.groupStartMs) {
-      this.guide.push({ startMs: this.groupStartMs, stopMs: this.nowMs, item: this.groupItem });
+      this.guide.push({ startMs: this.groupStartMs, stopMs: this.nowMs, item: this.guideItem() });
     }
-    this.groupStartMs = null; this.groupItem = null;
+    this.groupStartMs = null; this.groupItem = null; this.groupTitle = undefined;
+  }
+
+  /** The open group's guide programme: its first item, or that item under the
+   *  group's custom title (without the episode details, which are one item's). */
+  private guideItem(): MediaItem {
+    const it = this.groupItem!;
+    const t = this.groupTitle?.trim();
+    return t ? { ...it, showTitle: t, title: t, season: undefined, episodeNumber: undefined, plot: undefined } : it;
   }
 
   /** Guide programmes (one per EPG-group show block) for XMLTV generation. */
@@ -275,9 +302,26 @@ export class SchedulingEngine {
   /** Final per-content-key cursor positions, to persist and resume next build. */
   getProgress(): Record<string, number> {
     const out: Record<string, number> = {};
-    for (const [k, e] of this.enumerators) out[k] = e.position;
+    for (const [k, e] of this.enumerators) {
+      out[k] = e.position;
+      // items a pack-mode promotion jumped: saved too, so they still air next build
+      if (e instanceof Enumerator) { const held = e.heldPositions; out[`${k}#held`] = held.length; held.forEach((p, i) => { out[`${k}#held${i}`] = p; }); }
+    }
     return out;
   }
+
+  /** The held items saved with a content's position (see getProgress). */
+  private savedHeld(k: string): number[] {
+    const p = this.opts.progress ?? {};
+    return Array.from({ length: Math.min(p[`${k}#held`] ?? 0, 50) }, (_, i) => p[`${k}#held${i}`]).filter((v) => Number.isInteger(v));
+  }
+
+  /** Content that was asked for but has nothing in it (for the "nothing scheduled" error). */
+  emptyContent(): string[] {
+    return [...this.enumerators].filter(([, e]) => e.isEmpty).map(([k]) => k);
+  }
+  /** Whether the build asked for any content at all (a daypart gap asks for none). */
+  usedContent(): boolean { return this.enumerators.size > 0; }
 
   private done(): boolean {
     return this.nowMs >= this.opts.finishMs || this.items.length >= (this.opts.maxItems ?? 200000);
@@ -294,11 +338,11 @@ export class SchedulingEngine {
       case "sequence": await this.execSequence(ins.sequence); break;
       case "epg_group":
         this.groupDepth += ins.value ? 1 : -1;
-        if (ins.value) { this.groupStartMs = this.nowMs; this.groupItem = null; }
+        if (ins.value) { this.groupStartMs = this.nowMs; this.groupItem = null; this.groupTitle = ins.title; }
         else {
           if (this.groupStartMs != null && this.groupItem)
-            this.guide.push({ startMs: this.groupStartMs, stopMs: this.nowMs, item: this.groupItem });
-          this.groupStartMs = null; this.groupItem = null;
+            this.guide.push({ startMs: this.groupStartMs, stopMs: this.nowMs, item: this.guideItem() });
+          this.groupStartMs = null; this.groupItem = null; this.groupTitle = undefined;
         }
         break;
       case "graphics_on": if (!this.activeGraphics.includes(ins.element)) this.activeGraphics.push(ins.element); break;
@@ -333,6 +377,7 @@ export class SchedulingEngine {
       case "count": {
         const prevStretch = this.stretchUnitMs;
         this.stretchUnitMs = ins.stretchBreaks && ins.fitMinutes ? ins.fitMinutes * 60_000 : null;
+        if (ins.customTitle && this.groupStartMs != null && !this.groupTitle) this.groupTitle = ins.customTitle;
         try { await this.execCount(ins.content, ins.count, { fillerKind: ins.fillerKind }, ins.fitMinutes, ins.fitDiscard); }
         finally { this.stretchUnitMs = prevStretch; }
         break;
@@ -343,7 +388,11 @@ export class SchedulingEngine {
         // to pad — "the next mark" would otherwise be a whole slot away
         if (onMinuteBoundary(this.nowMs, ins.minutes, this.opts.tz)) break;
         await this.execPad(ins.content, nextMinuteBoundary(this.nowMs, ins.minutes, this.opts.tz), { fillerKind: ins.fillerKind }, ins.trim ?? false, ins.discardAttempts ?? 0, true, ins.fallback); break;
-      case "pad_until": await this.execPad(ins.content, nextTimeOfDay(this.nowMs, ins.when, this.opts.tz, false), { fillerKind: ins.fillerKind }, ins.trim ?? false, 0, true, ins.fallback); break;
+      case "pad_until":
+        // flood (the block's own programmes fill the day): the last one runs past the
+        // mark instead of stopping short, and no up-next card opens the block
+        if (ins.flood) { await this.fillUntil(ins.content, nextTimeOfDay(this.nowMs, ins.when, this.opts.tz, false), { fillerKind: ins.fillerKind }, false, 0, undefined, true); break; }
+        await this.execPad(ins.content, nextTimeOfDay(this.nowMs, ins.when, this.opts.tz, false), { fillerKind: ins.fillerKind }, ins.trim ?? false, 0, true, ins.fallback); break;
       case "skip_items": { const e = await this.enumerator(ins.content); for (let i = 0; i < ins.count; i++) e.next(); break; }
       case "skip_to_item": { const e = await this.enumerator(ins.content); this.skipTo(e, ins.season, ins.episode); break; }
       case "repeat": break; // handled in build()
@@ -513,13 +562,13 @@ export class SchedulingEngine {
    *  Never advances the clock past the content it actually placed — leaving the
    *  clock short (rather than jumping to target) avoids dead air; the following
    *  instruction just continues from where content ended. */
-  private async fillUntil(content: string, targetMs: number, opts: AddOpts, trim: boolean, discard: number, breakSequence?: string): Promise<void> {
+  private async fillUntil(content: string, targetMs: number, opts: AddOpts, trim: boolean, discard: number, breakSequence?: string, runOver = false): Promise<void> {
     const e = await this.enumerator(content);
     if (e.isEmpty) return; // nothing to fill with -> do not create dead air
     // With a break sequence (a block of short cartoons + ads) we let the LAST item
     // overshoot the target rather than stop short and dump a big filler block — the
     // caller sizes the target so `target + one item` still fits the slot.
-    const overshoot = !!breakSequence;
+    const overshoot = !!breakSequence || runOver;
     let safety = 0;
     while (this.nowMs < targetMs && !this.done()) {
       if (++safety > 100000) break;
@@ -846,7 +895,7 @@ export class SchedulingEngine {
         // keyed by what it plays, so reordering entries keeps each one's place
         const k = `${cacheKey}::${en.source}::${en.order}`;
         let sub = this.enumerators.get(k) as Enumerator | undefined;
-        if (!sub) { sub = new Enumerator(k, groupSegments(en.items), en.order, seed, this.opts.progress?.[k] ?? 0); this.enumerators.set(k, sub); }
+        if (!sub) { sub = new Enumerator(k, groupSegments(en.items), en.order, seed, this.opts.progress?.[k] ?? 0, this.savedHeld(k)); this.enumerators.set(k, sub); }
         return { e: sub, take: en.playAll ? "all" as const : Math.max(1, en.count ?? 1), inGuide: en.inGuide };
       });
       const pe = new PlaylistEnumerator(cacheKey, subs, this.opts.progress?.[cacheKey] ?? 0);
@@ -860,7 +909,7 @@ export class SchedulingEngine {
       const pick = new Enumerator(`${cacheKey}#pick`, items, "random", this.opts.seed ?? 1);
       items = Array.from({ length: def.rotation.size }, () => pick.next()!);
     }
-    e = new Enumerator(cacheKey, items, def.order, this.opts.seed ?? 1, this.opts.progress?.[cacheKey] ?? 0);
+    e = new Enumerator(cacheKey, items, def.order, this.opts.seed ?? 1, this.opts.progress?.[cacheKey] ?? 0, this.savedHeld(cacheKey));
     this.enumerators.set(cacheKey, e);
     return e;
   }

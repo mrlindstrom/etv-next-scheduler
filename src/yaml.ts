@@ -42,7 +42,7 @@ export interface ContentDef {
 
 // --- instructions (normalized union) ----------------------------------------
 export type Instruction =
-  | { op: "epg_group"; value: boolean }
+  | { op: "epg_group"; value: boolean; title?: string /* a custom guide title for the group */ }
   | { op: "graphics_on"; element: string; variables?: Record<string, string> }
   | { op: "graphics_off"; element: string }
   | { op: "watermark_on"; element: string }
@@ -56,7 +56,8 @@ export type Instruction =
       stretchBreaks?: boolean /* fit: a show longer than one slot spreads the spare time through its breaks */ }
   | { op: "duration"; content: string; duration: string; trim?: boolean; discardAttempts?: number; fillerKind?: FillerKind; fallback?: string; stopBeforeEnd?: boolean; offlineTail?: boolean; breakSequence?: string; tail?: string /* filler for what the items leave of the duration (legacy tail filler) */ }
   | { op: "pad_to_next"; content: string; minutes: number; trim?: boolean; fillerKind?: FillerKind; fallback?: string; discardAttempts?: number; stopBeforeEnd?: boolean; offlineTail?: boolean }
-  | { op: "pad_until"; content: string; when: string; tomorrow?: boolean; trim?: boolean; fillerKind?: FillerKind; fallback?: string }
+  | { op: "pad_until"; content: string; when: string; tomorrow?: boolean; trim?: boolean; fillerKind?: FillerKind; fallback?: string;
+      flood?: boolean /* the content is the programme: its last item runs past the mark, no up-next card */ }
   | { op: "mid_roll"; enabled: boolean; sequence?: string; pod?: string; expression?: string;
       mode?: MidRollMode; interval?: string; breaks?: number; fallback?: MidRollMode | "none"; minSegment?: string }
   | { op: "sequence"; sequence: string }

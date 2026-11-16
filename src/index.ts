@@ -42,7 +42,8 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
   const mod = moduleForFile(req.configPath);
   // a time-shift channel copies its source's playout instead of scheduling
   if (mod.id === "timeshift") {
-    const r = await buildTimeshift(src, req.outputDir, req.options.startMs, req.options.finishMs, req.options.tz, req.sourceXmltv);
+    const r = await buildTimeshift(src, req.outputDir, req.options.startMs, req.options.finishMs, req.options.tz, req.sourceXmltv,
+      { name: req.options.upNext?.channelName, number: req.options.upNext?.channelNumber });
     return { file: r.file, itemCount: r.itemCount, guide: [], progress: {}, xmltv: r.xmltv };
   }
   // a remote stream channel relays a live stream (guide passed through or repeated)
@@ -53,6 +54,15 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
   const doc = mod.compile(src);
   const engine = new SchedulingEngine(doc, req.resolver, req.options);
   const items = await engine.build();
+  // Nothing to air: stop before writing, so the windows already built stay and the
+  // build shows as failed. (A schedule with nothing in this stretch, e.g. a gap
+  // between dayparts, asks for no content and is written as it is.)
+  if (!items.length) {
+    const empty = engine.emptyContent();
+    if (empty.length) throw new Error(`Nothing was scheduled: no media matched ${empty.slice(0, 5).map((k) => `"${k}"`).join(", ")}${empty.length > 5 ? "…" : ""}. Check the channel's searches and collections, and that the library has been scanned.`);
+    if (!engine.usedContent() && !doc.dayparts.length) throw new Error("Nothing was scheduled: the channel has no programmes to play.");
+    if (engine.usedContent()) throw new Error("Nothing was scheduled: none of the channel's programmes fit the time to fill.");
+  }
   const playout = engine.toPlayout();
   // Stamp preferred audio/subtitle stream indices onto items whose file has a
   // matching-language track (channel default language, e.g. English).

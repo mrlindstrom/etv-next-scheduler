@@ -1,6 +1,6 @@
 import { appLog, pipeChildToLog } from "./app-log.js";
 import type { FastifyInstance } from "fastify";
-import { readdir, readFile, writeFile, mkdir, stat, unlink, rename } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, stat, unlink, rename, rm } from "node:fs/promises";
 import { join, basename, extname, isAbsolute } from "node:path";
 import { loadPlayout } from "../yaml.js";
 import { SchedulingEngine } from "../engine.js";
@@ -1187,9 +1187,19 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     return { publicUrl, auto: `http://${lanAddress()}:${port}`, effective: schedulerBaseUrl(publicUrl, port) };
   });
 
+  /** Why a channel name can't be used (it names files and folders), or null when it's fine. */
+  const badChannelName = (name: string): string | null => {
+    if (!name || !name.trim()) return "Enter a channel name.";
+    if (/[\\/:*?"<>|\x00-\x1f]/.test(name)) return `A channel name can't contain \\ / : * ? " < > |`;
+    if (/^\.+$/.test(name.trim()) || /[. ]$/.test(name)) return "A channel name can't be only dots, or end with a dot or a space.";
+    return null;
+  };
+
   // delete a channel: YAML + registry row + generated runtime config + outputs
-  app.delete("/api/channels/:name", async (req) => {
+  app.delete("/api/channels/:name", async (req, reply) => {
     const { name } = req.params as { name: string };
+    const bad = badChannelName(name);
+    if (bad) { reply.code(400); return { error: bad }; }
     const cfg = store.get();
     const nc = store.getNextConfig();
     const rt = abs(nc.runtimeDir);
@@ -1202,6 +1212,12 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     if (tvgId && tvgId !== name) await rmQuiet(join(rt, "xmltv", `${tvgId}.xml`));
     store.deleteChannelMeta(name);
     store.clearProgress(name); // a later channel with this name starts fresh
+    // its built playout too, or a new channel with this name would air the old schedule
+    const base = playoutBaseDir(store, ROOT);
+    try {
+      const d = (await readdir(base, { withFileTypes: true })).find((x) => x.isDirectory() && x.name.toLowerCase() === name.toLowerCase());
+      if (d) await rm(join(base, d.name), { recursive: true, force: true });
+    } catch { /* never built */ }
     pruneUnusedLogos();
     return { deleted: name };
   });
@@ -1281,6 +1297,8 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const { name } = req.params as { name: string };
     const b = req.body as { config?: string; yaml?: string };
     let raw = b.config ?? b.yaml ?? "";
+    const bad = badChannelName(name);
+    if (bad) { reply.code(400); return { error: bad }; }
     const dir = abs(store.get().channelsDir);
     const ch = await channelFile(dir, name);
     const mod = ch?.module ?? moduleById("yaml")!;
@@ -1296,10 +1314,15 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
   });
 
   app.post("/api/channels", async (req, reply) => {
-    const { name, mode, config } = req.body as { name: string; mode?: string; config?: string };
-    if (!name) { reply.code(400); return { error: "name required" }; }
+    const b = (req.body ?? {}) as { name?: string; mode?: string; config?: string };
+    const name = String(b.name ?? "").trim();
+    const { mode, config } = b;
+    const bad = badChannelName(name);
+    if (bad) { reply.code(400); return { error: bad }; }
     const mod = moduleById(mode ?? "yaml") ?? moduleById("yaml")!;
     const dir = abs(store.get().channelsDir);
+    // an existing name (in any scheduling mode) would be overwritten or doubled up
+    if ((await listChannelFiles(dir)).some((c) => c.name.toLowerCase() === name.toLowerCase())) { reply.code(400); return { error: `There's already a channel called "${name}".` }; }
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, `${name}${mod.saveExt}`), config ?? mod.defaultConfig(), "utf8");
     store.ensureChannelMeta(name);
