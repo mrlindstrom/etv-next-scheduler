@@ -695,7 +695,8 @@ function animPlan(o: Overlay, startMs: number, endMs: number, prog: { startMs: n
   const showMs = Math.max(1, num(t.showSeconds, 10)) * 1000;
   const timed = isTimed(o); // the clip holds the whole appearance: no still in between
   const hold = (phase: number, len: number, freq: number): PeriodicTiming | null =>
-    len > 0 && !timed ? { timing_type: "periodic", clock: "content", frequency_ms: freq, hold_ms: Math.round(len), fade_ms: CUT_FADE_MS, phase_offset_ms: Math.round(((phase % freq) + freq) % freq) } : null;
+    // next refuses a layer unless 2 x fade + hold fits in the period ("always": a day)
+    len > 0 && !timed ? { timing_type: "periodic", clock: "content", frequency_ms: freq, hold_ms: Math.round(Math.min(len, freq - 2 * CUT_FADE_MS)), fade_ms: CUT_FADE_MS, phase_offset_ms: Math.round(((phase % freq) + freq) % freq) } : null;
   if (t.mode === "always" || !t.mode) return { offset: 0, hold: hold(inMs, DAY - 1, DAY) };
   const len = showMs - inMs - outMs;
   if (t.mode === "every") {
@@ -807,9 +808,11 @@ export const isTimed = (o: Overlay) => (o.timing?.mode ?? "always") !== "always"
 /** The overlay's transition clip for these template values (cached by content):
  *  the file, and where it sits in output pixels. */
 async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
-  problems: string[]): Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null> {
+  problems: string[], shift = { x: 0, y: 0 }): Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null> {
   const out = opts.output!, t = o.timing ?? { mode: "always" };
   const sx = out.w / ARTBOARD.w, sy = out.h / ARTBOARD.h;
+  // `shift` (output pixels) moves the whole drawing: inside a pillar/letterboxed picture
+  const dX = shift.x / sx, dY = shift.y / sy;
   const { inMs, outMs } = animLengths(o.layers);
   const showMs = Math.max(1, num(t.showSeconds, 10)) * 1000;
   const mode = t.mode || "always";
@@ -849,14 +852,16 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
   for (const f of app) if (f.states) o.layers.forEach((l, i) => { if (l.type !== "video") grow(stateBox(l, f.states![i])); });
   grow(stillBox(o.layers));
   if (!Number.isFinite(x0)) return null;
+  x0 += dX; x1 += dX; y0 += dY; y1 += dY;
   const ox = Math.max(0, 2 * Math.floor((Math.max(0, x0) * sx) / 2)), oy = Math.max(0, 2 * Math.floor((Math.max(0, y0) * sy) / 2));
   const ex = Math.min(out.w, 2 * Math.ceil((Math.min(ARTBOARD.w, x1) * sx) / 2)), ey = Math.min(out.h, 2 * Math.ceil((Math.min(ARTBOARD.h, y1) * sy) / 2));
   const pw = ex - ox, ph = ey - oy;
   if (pw < 2 || ph < 2) return null;
-  const view = { x: ox / sx, y: oy / sy, w: pw / sx, h: ph / sy };
+  const view = { x: ox / sx - dX, y: oy / sy - dY, w: pw / sx, h: ph / sy };
 
   const texts = drawnKey(o, v);
-  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1, ...(isTimed(o) ? { timed: true, fade: o.fadeSeconds ?? 1 } : {}) })).digest("hex");
+  const moved = shift.x || shift.y ? { shift: [Math.round(shift.x), Math.round(shift.y)] } : {};
+  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1, ...(isTimed(o) ? { timed: true, fade: o.fadeSeconds ?? 1 } : {}), ...moved })).digest("hex");
   const file = join(opts.cacheDir, `${key}.mkv`);
   if (existsSync(file)) { try { const now = new Date(); utimesSync(file, now, now); } catch { /* ignore */ } return { file, origin: { x: ox, y: oy } }; }
 
@@ -1041,15 +1046,28 @@ export async function applyOverlays(
     lastReport = now;
     if (clipsDone < clips.size) report(`overlays: ${clipsDone} of ${clips.size} animated overlay clips ready (${clipsMade} newly drawn, ${CLIP_JOBS} at a time)…`);
   };
-  const clipFor = (o: Overlay, v: OverlayVars) => {
-    const k = `${o.id}|${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}`;
+  const clipFor = (o: Overlay, v: OverlayVars, shift = { x: 0, y: 0 }) => {
+    const k = `${o.id}|${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}|${shift.x},${shift.y}`;
     let job = clips.get(k);
     if (!job) {
       if (!clips.size) report?.(`overlays: preparing animated overlay clips (${CLIP_JOBS} at a time)…`);
-      job = slot(() => animatedClip(o, v, readAsset, opts, out.problems)).then((r) => { clipsDone++; if (r?.made) clipsMade++; progress(); return r; });
+      job = slot(() => animatedClip(o, v, readAsset, opts, out.problems, shift)).then((r) => { clipsDone++; if (r?.made) clipsMade++; progress(); return r; });
       clips.set(k, job);
     }
     return job;
+  };
+  // "inside the picture" for an animated overlay: next places the held still from the
+  // picture's edges (margins as percentages of the picture, size from the frame), but
+  // the transition clip is a canvas at output pixels. The clip moves by the same amount
+  // as the still, so the two line up. The picture's shape comes from the library.
+  const pictureShift = async (o: Overlay, v: OverlayVars, path: string | undefined): Promise<{ x: number; y: number }> => {
+    const W = opts.output!.w, H = opts.output!.h;
+    const dar = (path && info(path)?.dar) || W / H;
+    const cw = dar >= W / H ? W : H * dar, ch = dar >= W / H ? W / dar : H;
+    if (Math.abs(cw - W) < 2 && Math.abs(ch - H) < 2) return { x: 0, y: 0 };
+    const b = (await still(o, v))?.box ?? stillBox(o.layers);
+    if (!b) return { x: 0, y: 0 };
+    return { x: Math.round((W - cw) / 2 + (b.x * (cw - W)) / ARTBOARD.w), y: Math.round((H - ch) / 2 + (b.y * (ch - H)) / ARTBOARD.h) };
   };
 
   // each programme's own span: from its first to its last programme (non-filler)
@@ -1128,14 +1146,15 @@ export async function applyOverlays(
         const plan = animPlan(o, s, f, progSpan);
         if (!plan) continue;
         vars ??= overlayVars(cur, next, tz, { name: opts.channelName, number: opts.channelNumber });
-        const clip = await clipFor(o, vars);
+        const clip = await clipFor(o, vars, o.withinContent ? await pictureShift(o, vars, path) : undefined);
         if (clip) {
           layers.push({ source: { source_type: "local", path: clip.file, in_point_ms: Math.max(0, Math.round(CLIP_AT - plan.offset)) }, kind: "canvas", location: "top_left", layout: { mode: "region", origin: clip.origin } } as GraphicsLayer);
           out.canvas = true;
           note(item.id, o.id, Math.max(0, plan.offset));
           const st = plan.hold ? await still(o, vars) : null;
           if (st && plan.hold) layers.push({ source: { source_type: "local", path: st.file }, ...placement(st.box), kind: "media",
-            ...(o.opacity != null && o.opacity < 100 ? { opacity_percent: Math.max(0, o.opacity) } : {}), timing: plan.hold } as GraphicsLayer);
+            ...(o.opacity != null && o.opacity < 100 ? { opacity_percent: Math.max(0, o.opacity) } : {}),
+            ...(o.withinContent ? { within_source_content: true } : {}), timing: plan.hold } as GraphicsLayer);
           continue;
         }
       }
