@@ -14,6 +14,7 @@ import { initAppLog, appLog } from "./app-log.js";
 import { indexService } from "./index-service.js";
 import { HdhrTuner, registerHdhrRoutes } from "./hdhr.js";
 import { ensureLibraryDb } from "./library-import.js";
+import { initEas, registerEasRoutes } from "./eas.js";
 
 const PORT = Number(process.env.PORT ?? 8730);
 const ROOT = process.cwd();
@@ -41,6 +42,10 @@ registerSelfUpdateRoutes(app, new SelfUpdater(store, ROOT, nextRunner));
 const hdhr = new HdhrTuner(store, ROOT);
 registerHdhrRoutes(app, hdhr, store, ROOT);
 void hdhr.reconfigure();
+// Emergency alerts: NWS polling, and the alert stream alert-enabled channels read
+const eas = initEas(store, ROOT, PORT);
+registerEasRoutes(app, eas);
+eas.start();
 scheduler.reconfigure(); // start the auto-build loop if enabled in config
 // Search index: check it (rebuild if missing/corrupt/outdated) and apply anything
 // queued while the server was down — in a worker thread, so startup isn't blocked.
@@ -55,7 +60,8 @@ scheduler.reconfigure(); // start the auto-build loop if enabled in config
 
 // Stop the managed ErsatzTV next process when the web server exits.
 for (const sig of ["SIGINT", "SIGTERM"] as const) process.on(sig, () => { nextRunner.dispose(); process.exit(0); });
-process.on("exit", () => { nextRunner.dispose(); indexService.dispose(); hdhr.stopAll(); });
+// (the alert stream is left running on purpose: channels stall while it's gone)
+process.on("exit", () => { nextRunner.dispose(); indexService.dispose(); hdhr.stopAll(); eas.dispose(); });
 
 // Serve the built SPA (web/dist) if present; SPA fallback to index.html.
 const webDist = join(ROOT, "web", "dist");

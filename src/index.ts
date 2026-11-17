@@ -12,7 +12,7 @@ import { moduleForFile } from "./scheduling/registry.js";
 import { buildTimeshift, parseTimeshift } from "./scheduling/timeshift-module.js";
 import { buildRemote } from "./scheduling/remote-module.js";
 import { applyOverlays } from "./overlays.js";
-import { PLAYOUT_VERSION_GRAPHICS, PLAYOUT_VERSION_LAYOUT } from "./model.js";
+import { PLAYOUT_VERSION, PLAYOUT_VERSION_GRAPHICS, PLAYOUT_VERSION_LAYOUT } from "./model.js";
 export * from "./overlays.js";
 
 export * from "./model.js";
@@ -97,6 +97,13 @@ export async function buildChannel(req: ChannelBuildRequest): Promise<{ file: st
       (p: string) => (req.resolver as { templateData?: (p: string) => import("./legacy-graphics.js").LegacyItemData | null }).templateData?.(p) ?? null);
     if (r.items) playout.version = r.canvas ? PLAYOUT_VERSION_LAYOUT : PLAYOUT_VERSION_GRAPHICS;
     if (r.problems.length) overlayProblems = r.problems;
+  }
+  // Emergency alerts: a layer reading the alert stream on every item, on top of the
+  // rest (transparent until an alert is active).
+  const alertLayer = req.options.overlays?.alertLayer;
+  if (alertLayer) {
+    for (const it of playout.items) it.graphics = [...(it.graphics ?? []), structuredClone(alertLayer)];
+    if (playout.version === PLAYOUT_VERSION) playout.version = PLAYOUT_VERSION_GRAPHICS;
   }
   const file = await writePlayout(
     req.outputDir, playout, req.options.startMs, req.options.finishMs, req.options.tz, engine.getLabels(),

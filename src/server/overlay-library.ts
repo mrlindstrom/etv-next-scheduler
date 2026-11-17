@@ -18,6 +18,7 @@ import type { ConfigStore } from "./config.js";
 import { sniffImage, logoPath, isManagedLogo } from "./channel-logos.js";
 import { CHANNEL_LOGO, setOverlayExamplesDir, setOverlayPicturesDir, addFontDir, addFontFile, forgetFontFile, fontFileFamilies, type Overlay, type OverlayBuildOptions } from "../overlays.js";
 import type { WatermarkLocation } from "../model.js";
+import { easService } from "./eas.js";
 
 export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
 const VIDEO_EXT = ["mp4", "mov", "webm", "mkv", "m4v"];
@@ -51,7 +52,9 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
   const nc = store.getNextConfig();
   const ff = nc.ffmpegPath ? abs(root, nc.ffmpegPath) : join(root, "bin", process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg");
   overlayFontsDir(store, root); // the added fonts, for this build's drawings
+  const output = { w: nc.video?.width || 1920, h: nc.video?.height || 1080 };
   return {
+    alertLayer: easService()?.layerFor(meta?.name ?? channelName, output.w, output.h),
     library: overlayLibrary(store),
     channel: meta?.overlays ?? [],
     assetsDir: overlayAssetsDir(store, root),
@@ -62,7 +65,7 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
     liveBase: `http://127.0.0.1:${Number(process.env.PORT ?? 8730)}`,
     picturesDir: overlayPicturesDir(store, root),
     ffmpeg: existsSync(ff) ? ff : (nc.ffmpegPath || "ffmpeg"),
-    output: { w: nc.video?.width || 1920, h: nc.video?.height || 1080 },
+    output,
     channelLogo: meta?.logo && isManagedLogo(meta.logo) ? logoPath(join(abs(root, store.getNextConfig().runtimeDir), "logos"), meta.logo) ?? undefined : undefined,
   };
 }

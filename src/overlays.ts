@@ -114,6 +114,8 @@ export interface OverlayBuildOptions {
   /** animated overlays: ffmpeg to encode their transition clips, and the output size they're drawn at */
   ffmpeg?: string;
   output?: { w: number; h: number };
+  /** the emergency alert layer (server/eas.ts), drawn over everything on every item */
+  alertLayer?: GraphicsLayer;
 }
 
 let EXAMPLES_DIR = "";

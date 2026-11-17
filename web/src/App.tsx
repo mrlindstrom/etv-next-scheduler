@@ -9,6 +9,7 @@ import { Overlays } from "./screens/Overlays.js";
 import { BuildScreen } from "./screens/Build.js";
 import { Preview } from "./screens/Preview.js";
 import { Streaming } from "./screens/Streaming.js";
+import { Alerts } from "./screens/Alerts.js";
 import { Logs } from "./screens/Logs.js";
 import { Dashboard } from "./screens/Dashboard.js";
 import { Troubleshoot } from "./screens/Troubleshoot.js";
@@ -98,6 +99,7 @@ export function App() {
         {page === "overlays" && <Overlays />}
         {page === "channels" && <Channels onNavigate={(t) => navigate(t)} />}
         {page === "streaming" && <Streaming />}
+        {page === "alerts" && <Alerts />}
         {page === "build" && <BuildScreen config={config} />}
         {page === "preview" && <Preview />}
         {page === "logs" && <Logs />}

@@ -7,7 +7,7 @@ export interface UpdateStatus { binDir: string; checkedAt: number | null; checkE
 export interface NextRunnerStatus { enabled: boolean; phase: "stopped" | "waiting" | "starting" | "running" | "crashed"; detail: string; problem: string | null; pid: number | null; uptimeSec: number; port: number; stale: boolean; hasPlayouts: boolean; binaryFound: boolean; binaryPath: string; version: string | null; versionWarning: string | null; restarts: number; lastExit: { code: number | null; signal: string | null; at: number } | null; log: string[]; }
 export interface SchedulerStatus { enabled: boolean; intervalMin?: number; thresholdHours?: number; running?: boolean; lastTick?: string | null; nextTickAt?: string | null; log?: string[]; }
 export interface VerifyResult { ok: boolean; problems?: string[]; error?: string; path?: string; stats?: { mediaItems: number; episodes: number; shows: number; chapters: number }; }
-export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; fallbackImage: string; overlays: string[]; }
+export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; fallbackImage: string; overlays: string[]; eas?: boolean; }
 export type ContentFix = "refresh-metadata" | "scan-source" | "import-library" | "enable-library" | null;
 export interface ContentCheck { items: number; airsNothing: boolean; problems: { role: string; what: string; reason: string; fix: ContentFix }[]; }
 export interface LegacyChannelPlan { key: string; playoutId: number; channelId: number; number: string; name: string; kind: "classic" | "block" | "yaml" | "other"; schedule: string | null; file: string | null; status: "new" | "exists" | "unsupported"; config: string | null; warnings: string[]; check: ContentCheck | null; caseClash?: string; numberClash?: string; suggestedNumber?: string; logo?: { hash?: string; file?: string; url?: string }; hasLogo?: boolean; watermark?: { row: { Id: number; Name: string }; file?: string }; hasWatermark?: boolean; }
@@ -144,7 +144,16 @@ export interface TestRun {
 }
 export interface CardSlot { startMs: number; finishMs: number; anchorMs: number; next: string; nextAt: string; }
 export interface CardPreview { channel: string; theme: string; count: number; durationMs: number; textMode: string; width: number; height: number; layers: { url: string; phaseMs: number; fadeMs: number; holdMs: number }[]; rows: { label: string; title: string }[]; audio: boolean; audioName: string; enabled: boolean; }
+export interface EasConfig { enabled: boolean; lat: number | null; lon: number | null; place: string; minSeverity: "Extreme" | "Severe" | "Moderate" | "Minor"; pollSec: number; position: "bottom" | "top"; rotateSec: number; contact: string; streamPort: number; keepStream: boolean; }
+export interface EasAlertCard { id: string; event: string; severity: string; area: string; until: string; headline: string; test?: boolean; }
+export interface EasStatus {
+  poll: { at: number | null; ok: boolean; error: string | null; found: number; shown: number };
+  stream: { running: boolean; port: number; version: string | null; current: boolean; clients: number; error: string | null; log: string[] };
+  alerts: EasAlertCard[]; testUntil: number | null;
+}
 const j = async (r: Response) => { if (!r.ok) throw new Error((await r.text()) || r.statusText); return r.json(); };
+/** The `error` of a JSON error body, or the text. */
+export const errText = (e: unknown): string => { const t = String((e as Error)?.message ?? e); try { return JSON.parse(t).error ?? t; } catch { return t; } };
 // Only send a JSON content-type when there's actually a body — otherwise Fastify
 // rejects an empty body with content-type application/json (FST_ERR_CTP_EMPTY_JSON_BODY).
 const opts = (m: string, body?: unknown): RequestInit =>
@@ -153,6 +162,14 @@ const opts = (m: string, body?: unknown): RequestInit =>
     : { method: m, headers: { "content-type": "application/json" }, body: JSON.stringify(body) };
 
 export const api = {
+  // emergency alerts
+  eas: (): Promise<{ config: EasConfig; status: EasStatus }> => fetch("/api/eas").then(j),
+  saveEas: (c: Partial<EasConfig>): Promise<{ config: EasConfig; status: EasStatus }> => fetch("/api/eas", opts("PUT", c)).then(j),
+  checkEas: (): Promise<{ status: EasStatus }> => fetch("/api/eas/check", opts("POST")).then(j),
+  easPlace: (lat: number, lon: number): Promise<{ place: string }> => fetch("/api/eas/place", opts("POST", { lat, lon })).then(j),
+  easTest: (minutes: number): Promise<{ status: EasStatus }> => fetch("/api/eas/test", opts("POST", { minutes })).then(j),
+  easStopTest: (): Promise<{ status: EasStatus }> => fetch("/api/eas/test", opts("DELETE")).then(j),
+  easStopStream: (): Promise<{ config: EasConfig; status: EasStatus }> => fetch("/api/eas/stop-stream", opts("POST")).then(j),
   // troubleshooting
   troubleSystem: (): Promise<TroubleSystem> => fetch("/api/troubleshoot/system").then(j),
   hwTest: (): Promise<{ results: HwTestResult[] }> => fetch("/api/troubleshoot/hwtest", opts("POST")).then(j),

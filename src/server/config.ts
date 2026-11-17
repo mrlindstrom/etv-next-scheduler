@@ -57,6 +57,7 @@ export interface ChannelMeta {
   encoding: string;     // "" (default: pass remote streams through, re-encode the rest) | "transcode" | "copy" (next's copy mode)
   fallbackImage: string; // shown when there's nothing to play: "" (Streaming default) | "black" | "standby" | an image path
   overlays: string[];    // overlay ids drawn over every programme (watermark / bug, straps…)
+  eas: boolean;          // emergency alerts are shown on this channel (when alerts are on)
 }
 
 /** ErsatzTV next streaming settings, written into lineup.json + config.json. */
@@ -156,6 +157,16 @@ export class ConfigStore {
     if (!cols.includes("encoding")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN encoding TEXT DEFAULT ''`);
     if (!cols.includes("fallback_image")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN fallback_image TEXT DEFAULT ''`);
     if (!cols.includes("overlays")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN overlays TEXT DEFAULT ''`);
+    if (!cols.includes("eas")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN eas INTEGER DEFAULT 1`);
+  }
+
+  /** Emergency alert settings (eas.ts fills in the defaults). */
+  getEasConfig(): Partial<import("./eas-alerts.js").EasConfig> {
+    const row = this.db.prepare(`SELECT value FROM settings WHERE key='easConfig'`).get() as any;
+    return row ? safeJson(row.value) : {};
+  }
+  setEasConfig(c: import("./eas-alerts.js").EasConfig): void {
+    this.db.prepare(`INSERT INTO settings(key,value) VALUES('easConfig',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`).run(JSON.stringify(c));
   }
 
   // --- per-source remote credentials (token/API key; address optional override) ---
@@ -247,7 +258,7 @@ export class ConfigStore {
   // --- channel registry (metadata for the ErsatzTV next lineup) --------------
   channelMetas(): ChannelMeta[] {
     return (this.db.prepare(`SELECT * FROM channel_meta ORDER BY sort, number, name`).all() as any[])
-      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", fallbackImage: r.fallback_image ?? "", overlays: parseList(r.overlays) }));
+      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", fallbackImage: r.fallback_image ?? "", overlays: parseList(r.overlays), eas: r.eas !== 0 }));
   }
   channelMeta(name: string): ChannelMeta | undefined {
     return this.channelMetas().find((c) => c.name === name);
@@ -268,12 +279,12 @@ export class ConfigStore {
     const prev = this.channelMeta(name)!;
     if (patch.logo !== undefined && patch.logo !== prev.logo) patch = { ...patch, logoGenerated: !!patch.logoGenerated };
     else { const { logoGenerated: _ignored, ...rest } = patch; patch = rest; }
-    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", fallbackImage: "fallback_image", overlays: "overlays" };
+    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", fallbackImage: "fallback_image", overlays: "overlays", eas: "eas" };
     for (const [k, col] of Object.entries(cols)) {
       let v = (patch as any)[k];
       if (v === undefined) continue;
       if (k === "overlays") v = JSON.stringify(Array.isArray(v) ? v.filter((x: unknown) => typeof x === "string" && x) : []);
-      this.db.prepare(`UPDATE channel_meta SET ${col}=? WHERE name=?`).run(k === "enabled" || k === "logoGenerated" ? (v ? 1 : 0) : v, name);
+      this.db.prepare(`UPDATE channel_meta SET ${col}=? WHERE name=?`).run(k === "enabled" || k === "logoGenerated" || k === "eas" ? (v ? 1 : 0) : v, name);
     }
     return this.channelMeta(name)!;
   }
