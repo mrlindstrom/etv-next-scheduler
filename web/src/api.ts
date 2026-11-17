@@ -144,12 +144,14 @@ export interface TestRun {
 }
 export interface CardSlot { startMs: number; finishMs: number; anchorMs: number; next: string; nextAt: string; }
 export interface CardPreview { channel: string; theme: string; count: number; durationMs: number; textMode: string; width: number; height: number; layers: { url: string; phaseMs: number; fadeMs: number; holdMs: number }[]; rows: { label: string; title: string }[]; audio: boolean; audioName: string; enabled: boolean; }
-export interface EasConfig { enabled: boolean; lat: number | null; lon: number | null; place: string; minSeverity: "Extreme" | "Severe" | "Moderate" | "Minor"; pollSec: number; position: "bottom" | "top"; rotateSec: number; contact: string; streamPort: number; keepStream: boolean; }
+export interface EasConfig { enabled: boolean; lat: number | null; lon: number | null; place: string; minSeverity: "Extreme" | "Severe" | "Moderate" | "Minor"; pollSec: number; position: "bottom" | "top"; rotateSec: number; showSec: number; hideSec: number; contact: string; streamPort: number; keepStream: boolean; }
 export interface EasAlertCard { id: string; event: string; severity: string; area: string; until: string; headline: string; test?: boolean; }
 export interface EasStatus {
   poll: { at: number | null; ok: boolean; error: string | null; found: number; shown: number };
   stream: { running: boolean; port: number; version: string | null; current: boolean; clients: number; error: string | null; log: string[] };
   alerts: EasAlertCard[]; testUntil: number | null;
+  /** real alerts' on/off cycle (only in GET /api/eas) */
+  cycle?: { on: boolean; changesAt: number | null };
 }
 const j = async (r: Response) => { if (!r.ok) throw new Error((await r.text()) || r.statusText); return r.json(); };
 /** The `error` of a JSON error body, or the text. */

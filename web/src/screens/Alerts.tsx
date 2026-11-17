@@ -123,6 +123,10 @@ export function Alerts() {
               {SEVERITY_CHOICES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </label>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Civil alerts that officials send through the Weather Service (AMBER alerts, evacuations, shelter in place,
+            law enforcement and hazardous materials warnings) always show, whatever this is set to.
+          </p>
           <div className="row">
             <label>Banner position
               <select value={cfg.position} onChange={(e) => set({ position: e.target.value as EasConfig["position"] })}>
@@ -132,6 +136,14 @@ export function Alerts() {
             </label>
             <label>Seconds per alert when several are active<input type="number" min={5} max={60} value={cfg.rotateSec} onChange={(e) => set({ rotateSec: Number(e.target.value) })} /></label>
           </div>
+          <div className="row">
+            <label>Show the banner for (seconds)<input type="number" min={10} max={600} value={cfg.showSec} onChange={(e) => set({ showSec: Number(e.target.value) })} /></label>
+            <label>Then hide it for (minutes)<input type="number" min={0} max={60} step={0.5} value={cfg.hideSec / 60} onChange={(e) => set({ hideSec: Math.round(Number(e.target.value) * 60) })} /></label>
+          </div>
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            Like a weather crawl: an alert goes on screen as soon as it comes in, comes off for a while, then comes back,
+            until it ends or is cancelled. A new alert starts it over. Hide for 0 minutes to keep alerts on screen the whole time.
+          </p>
           <details>
             <summary className="muted" style={{ cursor: "pointer" }}>More settings</summary>
             <div className="form">
@@ -186,6 +198,12 @@ export function Alerts() {
               {st.alerts.map((a) => <li key={a.id}><b>{a.event}</b> <span className="muted">({a.test ? "test" : a.severity})</span> {a.area} {a.until}</li>)}
             </ul>
           )}
+          {st.cycle?.changesAt && st.alerts.length > 0 && (
+            <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+              {st.cycle.on ? "Showing now" : "Hidden for now"}; {st.cycle.on ? "comes off" : "back on"} at about{" "}
+              {new Date(st.cycle.changesAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })} (TVs follow about half a minute later).
+            </p>
+          )}
           <div className="actions">
             <button onClick={() => run("check", async () => { const r = await api.checkEas(); setSt(r.status); setPreviewKey((k) => k + 1); })} disabled={!!busy || !saved.enabled}>{busy === "check" ? "Checking…" : "Check now"}</button>
             {testing
@@ -202,7 +220,7 @@ export function Alerts() {
           </div>
           <p className="muted" style={{ fontSize: 12 }}>
             {saved.enabled
-              ? "The test alert goes on every alert-enabled channel, like a real one, and shows on TVs within about a minute. End it any time."
+              ? "The test alert goes on every alert-enabled channel and comes and goes like a real one (pick a length longer than the show + hide times to see it come back). It shows on TVs within about a minute. End it any time."
               : "Turn on \"Show emergency alerts on channels\" and save to use the test alert. It doesn't need the Weather Service, so it works even while their feed is down."}
           </p>
           <h3 style={{ marginBottom: 6 }}>How the banner looks</h3>

@@ -18,7 +18,7 @@
 import http from "node:http";
 import { readFileSync, watchFile } from "node:fs";
 import { rasterize, loadRasterizer } from "../overlays.js";
-import { alertCardSvg, bannerHeight, streamVersion, type EasState } from "./eas-alerts.js";
+import { alertCardSvg, bannerHeight, cycleOn, streamVersion, type EasState } from "./eas-alerts.js";
 
 const arg = (name: string, d: string) => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : d; };
 const PORT = Number(arg("port", "8735"));
@@ -57,12 +57,13 @@ function framesFor(w: number, h: number): Promise<Frames> {
   }
   return f;
 }
-/** The frame to show now. */
-async function currentFrame(w: number, h: number): Promise<Buffer> {
+/** The frame for time `at`: alerts in the "on" part of their cycle (like a weather
+ *  crawl; the test alert too, so the cycle can be tried), rotating when there are several. */
+async function frameAt(w: number, h: number, at: number): Promise<Buffer> {
   const f = await framesFor(w, h);
-  const cards = f.cards.filter((c): c is Buffer => !!c);
+  const cards = cycleOn(state, at) ? f.cards.filter((c): c is Buffer => !!c) : [];
   if (!cards.length) return f.clear;
-  const i = Math.floor(Date.now() / 1000 / Math.max(3, state.rotateSec || 12)) % cards.length;
+  const i = Math.floor(at / 1000 / Math.max(3, state.rotateSec || 12)) % cards.length;
   return cards[i];
 }
 
@@ -77,7 +78,7 @@ const server = http.createServer((req, res) => {
   if (u.pathname === "/quit" && req.method === "POST") { res.end("bye"); log("asked to quit (replaced by a newer version)"); setTimeout(() => process.exit(0), 100); return; }
   if (u.pathname === "/frame.png") { // one frame, for checking by eye
     const w = Number(u.searchParams.get("w")) || 1920, h = Number(u.searchParams.get("h")) || 1080;
-    void currentFrame(w, h).then((b) => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(b); });
+    void frameAt(w, h, Date.now()).then((b) => { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "no-store" }); res.end(b); });
     return;
   }
   if (u.pathname !== "/eas.stream") { res.writeHead(404); res.end(); return; }
@@ -88,13 +89,18 @@ const server = http.createServer((req, res) => {
   clients++;
   const t0 = Date.now();
   let sent = 0, busy = false;
-  // keep AHEAD_SEC of frames in front of the reader, never more (that would only add delay)
+  // keep AHEAD_SEC of frames in front of the reader, never more (that would only add delay).
+  // Each frame is timed as if sent AHEAD_SEC before it airs, like the steady stream of every
+  // other channel, so all channels turn the banner on and off together (and a channel's
+  // first burst doesn't show 30 s of one moment).
   const tick = setInterval(async () => {
     if (busy) return;
     busy = true;
     try {
       const due = Math.floor(((Date.now() - t0) / 1000 + AHEAD_SEC) * fps);
-      while (sent < due && res.writableLength < 256 * 1024 && !res.destroyed) { res.write(await currentFrame(w, h)); sent++; }
+      while (sent < due && res.writableLength < 256 * 1024 && !res.destroyed) {
+        res.write(await frameAt(w, h, t0 + (sent / fps - AHEAD_SEC) * 1000)); sent++;
+      }
     } catch (e) { log(`frame failed: ${(e as Error).message}`); }
     busy = false;
   }, 20);

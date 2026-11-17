@@ -31,6 +31,10 @@ export interface EasConfig {
   position: "bottom" | "top";
   /** seconds each alert stays up when several are active */
   rotateSec: number;
+  /** like a weather crawl: on for showSec as soon as an alert starts, then off for hideSec,
+   *  repeating until it ends (hideSec 0 = on the whole time) */
+  showSec: number;
+  hideSec: number;
   /** optional contact (email or site) sent to NWS in the User-Agent, as they ask */
   contact: string;
   /** the alert stream port; 0 = the scheduler's port + 5 */
@@ -41,11 +45,21 @@ export interface EasConfig {
 
 export const EAS_DEFAULTS: EasConfig = {
   enabled: false, lat: null, lon: null, place: "", minSeverity: "Severe", pollSec: 60, position: "bottom", rotateSec: 12,
-  contact: "", streamPort: 0, keepStream: false,
+  showSec: 60, hideSec: 300, contact: "", streamPort: 0, keepStream: false,
 };
 
 export const SEVERITIES = ["Extreme", "Severe", "Moderate", "Minor"] as const;
 export const severityRank = (s: string): number => { const i = SEVERITIES.indexOf(s as any); return i < 0 ? SEVERITIES.length : i; };
+
+/** Civil alerts officials send through NWS (AMBER, evacuations, shelter in place…). They
+ *  often come with severity "Unknown", so they're shown whatever the severity setting. */
+const CIVIL = /civil (emergency|danger)|shelter in place|evacuation|law enforcement|child abduction|blue alert|hazardous materials|radiological|nuclear power|911 telephone|local area emergency/i;
+export const isCivil = (event: string): boolean => CIVIL.test(event);
+
+/** Whether an alert passes the severity setting: civil alerts always do, and "Unknown"
+ *  (or a missing severity) counts as the least severe, so "everything" includes it. */
+export const passesSeverity = (event: string, severity: string, min: string): boolean =>
+  isCivil(event) || (severityRank(severity) < SEVERITIES.length ? severityRank(severity) <= severityRank(min) : severityRank(min) === SEVERITIES.length - 1);
 
 /** One alert as the card draws it (display-ready: times already in the scheduler's zone). */
 export interface AlertCard {
@@ -63,7 +77,19 @@ export interface EasState {
   alerts: AlertCard[];
   position: "bottom" | "top";
   rotateSec: number;
+  /** the on/off cycle (EasConfig), counted from cycleStart: when the newest alert came in */
+  showSec?: number;
+  hideSec?: number;
+  cycleStart?: number;
   updatedAt: number;
+}
+
+/** Whether alerts are on screen at time `at`. Missing settings (a state file written by an
+ *  older scheduler) mean the defaults, not "on the whole time". */
+export function cycleOn(s: Pick<EasState, "showSec" | "hideSec" | "cycleStart">, at: number): boolean {
+  const show = (s.showSec ?? EAS_DEFAULTS.showSec) * 1000, hide = (s.hideSec ?? EAS_DEFAULTS.hideSec) * 1000, t = at - (s.cycleStart ?? 0);
+  if (hide <= 0) return true;
+  return t >= 0 && t % (show + hide) < show;
 }
 
 /** Banner height for an output size (the layer is the banner, not the whole frame). */
@@ -98,7 +124,7 @@ export function alertCardSvg(a: AlertCard, w: number, h: number, index = 0, coun
   const pad = Math.round(36 * u);
   const headH = Math.round(84 * u);
   const titleSize = Math.round(46 * u), metaSize = Math.round(30 * u), bodySize = Math.round(34 * u);
-  const red = a.severity === "Extreme" || a.severity === "Severe" || a.test ? "#c1121f" : "#d97706";
+  const red = a.severity === "Extreme" || a.severity === "Severe" || a.test || isCivil(a.event) ? "#c1121f" : "#d97706";
   const label = a.test ? "TEST · EMERGENCY ALERT SYSTEM" : "EMERGENCY ALERT";
   const counter = count > 1 ? `${index + 1} of ${count}` : "";
   const charsPerLine = Math.max(20, Math.floor((w - pad * 2) / (bodySize * 0.5)));

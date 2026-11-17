@@ -17,7 +17,7 @@ import { formatClock } from "../upnext-ass.js";
 import { rasterize, loadRasterizer } from "../overlays.js";
 import { appLog } from "./app-log.js";
 import {
-  EAS_DEFAULTS, SEVERITIES, severityRank, alertCardSvg, bannerHeight, streamVersion, testCard,
+  EAS_DEFAULTS, SEVERITIES, severityRank, passesSeverity, alertCardSvg, bannerHeight, cycleOn, streamVersion, testCard,
   type AlertCard, type EasConfig, type EasState,
 } from "./eas-alerts.js";
 
@@ -46,6 +46,8 @@ export class EasService {
   private superviseTimer: NodeJS.Timeout | null = null;
   private lastSpawn = 0;
   private lastStateJson = "";
+  /** when the newest alert came in: the on/off cycle counts from here */
+  private cycleStart = 0;
   status: EasStatus;
 
   constructor(private store: ConfigStore, private root: string, private serverPort: number) {
@@ -54,6 +56,12 @@ export class EasService {
       stream: { running: false, port: this.streamPort(), version: null, current: false, clients: 0, error: null, log: [] },
       alerts: [], testUntil: null,
     };
+    // carry on from before a restart: the same alerts stay up, in the same cycle
+    try {
+      const prev = JSON.parse(readFileSync(this.stateFile(), "utf8")) as EasState;
+      if (this.config().enabled) this.alerts = (prev.alerts ?? []).filter((a) => !a.test);
+      this.cycleStart = Number(prev.cycleStart) || 0;
+    } catch { /* first run */ }
   }
 
   config(): EasConfig { return { ...EAS_DEFAULTS, ...this.store.getEasConfig() }; }
@@ -77,6 +85,8 @@ export class EasService {
     if (!SEVERITIES.includes(next.minSeverity)) next.minSeverity = "Severe";
     next.pollSec = Math.min(600, Math.max(30, Number(next.pollSec) || 60));
     next.rotateSec = Math.min(60, Math.max(5, Number(next.rotateSec) || 12));
+    next.showSec = Math.min(600, Math.max(10, Number(next.showSec) || 60));
+    next.hideSec = Math.min(3600, Math.max(0, Number.isFinite(Number(next.hideSec)) ? Number(next.hideSec) : 300));
     next.position = next.position === "top" ? "top" : "bottom";
     next.streamPort = Math.max(0, Math.min(65535, Number(next.streamPort) || 0));
     next.contact = String(next.contact ?? "").trim().slice(0, 200);
@@ -131,11 +141,13 @@ export class EasService {
       const tz = this.store.get().tz;
       const shown = all
         .filter((a) => a.status === "Actual" && a.messageType !== "Cancel")
-        .filter((a) => severityRank(a.severity ?? "") <= severityRank(cfg.minSeverity))
+        .filter((a) => passesSeverity(a.event ?? "", a.severity ?? "", cfg.minSeverity))
         .filter((a) => { const end = Date.parse(a.ends ?? a.expires ?? ""); return !Number.isFinite(end) || end > now; })
         .sort((a, b) => severityRank(a.severity ?? "") - severityRank(b.severity ?? "") || Date.parse(b.sent ?? "") - Date.parse(a.sent ?? ""));
       const before = new Set(this.alerts.map((a) => a.id));
       this.alerts = shown.map((a) => toCard(a, tz));
+      // a new alert goes on screen straight away: the on/off cycle starts again
+      if (this.alerts.some((a) => !before.has(a.id))) this.cycleStart = now;
       for (const a of this.alerts) if (!before.has(a.id)) appLog("alerts", `on screen: ${a.event} (${a.severity}) for ${a.area} ${a.until}`.trim());
       for (const id of before) if (!this.alerts.some((a) => a.id === id) && id !== "test") appLog("alerts", "an alert ended or was cancelled; taken off screen");
       this.status.poll = { at: now, ok: true, error: null, found: all.length, shown: this.alerts.length };
@@ -164,11 +176,23 @@ export class EasService {
   // ---- the test alert
   test(minutes: number): void {
     this.testUntil = Date.now() + Math.min(30, Math.max(1, minutes)) * 60_000;
+    this.cycleStart = Date.now(); // on straight away, then the on/off cycle, like a real alert
     appLog("alerts", `test alert shown for ${minutes} minute(s)`);
     this.writeState();
     setTimeout(() => { if (this.testUntil && Date.now() >= this.testUntil) { this.testUntil = null; this.writeState(); } }, this.testUntil - Date.now() + 500);
   }
   clearTest(): void { this.testUntil = null; this.writeState(); }
+
+  /** Where real alerts are in their on/off cycle: on now or not, and when that changes
+   *  (null: no alerts, or on the whole time). TVs follow about half a minute later. */
+  cycle(): { on: boolean; changesAt: number | null } {
+    const cfg = this.config(), now = Date.now(), n = this.shown().length;
+    if (!n || cfg.hideSec <= 0) return { on: n > 0, changesAt: null };
+    const s = { showSec: cfg.showSec, hideSec: cfg.hideSec, cycleStart: this.cycleStart };
+    const period = (cfg.showSec + cfg.hideSec) * 1000, into = (now - this.cycleStart) % period;
+    const on = cycleOn(s, now);
+    return { on, changesAt: now - into + (on ? cfg.showSec * 1000 : period) };
+  }
 
   /** What's on screen right now (alerts, plus the test while it runs). */
   shown(): AlertCard[] {
@@ -179,7 +203,8 @@ export class EasService {
 
   private writeState(): void {
     const cfg = this.config();
-    const state: EasState = { alerts: this.shown(), position: cfg.position, rotateSec: cfg.rotateSec, updatedAt: 0 };
+    const state: EasState = { alerts: this.shown(), position: cfg.position, rotateSec: cfg.rotateSec,
+      showSec: cfg.showSec, hideSec: cfg.hideSec, cycleStart: this.cycleStart, updatedAt: 0 };
     const json = JSON.stringify(state);
     this.status.alerts = state.alerts;
     this.status.testUntil = this.testUntil;
@@ -312,7 +337,7 @@ const sentenceCase = (s: string) => (s === s.toUpperCase()
 const cleanDescription = (s: string) => s.replace(/\.\.\./g, " ").replace(/^\s*\*\s*/gm, "").replace(/\s+/g, " ").trim();
 
 export function registerEasRoutes(app: FastifyInstance, eas: EasService): void {
-  app.get("/api/eas", async () => ({ config: eas.config(), status: eas.status, severities: SEVERITIES }));
+  app.get("/api/eas", async () => ({ config: eas.config(), status: { ...eas.status, cycle: eas.cycle() }, severities: SEVERITIES }));
   app.put("/api/eas", async (req, reply) => {
     try { const config = eas.save((req.body ?? {}) as Partial<EasConfig>); await eas.poll(); await eas.supervise(); return { config, status: eas.status }; }
     catch (e) { reply.code(400); return { error: (e as Error).message }; }
