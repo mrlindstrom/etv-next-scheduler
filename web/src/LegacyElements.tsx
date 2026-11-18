@@ -231,8 +231,14 @@ export function LegacyDesigner({ initial, channels, usedBy, onClose, onSaved, on
             <b>Show on channels</b>
             {!ov.id ? <p className="muted">Save it first, then pick its channels here.</p> : (
               <>
-                <p className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>Filled in for every item on these channels{ov.duringFiller ? ", commercials and bumpers included" : ""}. In a YAML channel, switch it on with <code>graphics_on: "{el.file || "…"}"</code> instead. Rebuild a channel after changing this.</p>
-                <label className="ov-inline" style={{ marginBottom: 6 }}><input type="checkbox" checked={!!ov.duringFiller} onChange={(e) => set({ duringFiller: e.target.checked })} /> Also over commercials and bumpers (as legacy did)</label>
+                <p className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>Filled in for every {ov.fillerOnly ? "commercial and bumper" : ov.duringFiller ? "item" : "show"} on these channels{ov.duringFiller && !ov.fillerOnly ? ", commercials and bumpers included" : ""}. For a bumper's graphics (now / next…), pick "only commercials and bumpers" so they don't show over the shows. In a YAML channel, switch it on with <code>graphics_on: "{el.file || "…"}"</code> instead. Rebuild a channel after changing this.</p>
+                <label className="ov-inline" style={{ marginBottom: 6 }}>Show over{" "}
+                  <select style={{ width: "auto", display: "inline-block" }} value={ov.fillerOnly ? "filler" : ov.duringFiller ? "both" : "shows"}
+                    onChange={(e) => set({ duringFiller: e.target.value !== "shows", fillerOnly: e.target.value === "filler" })}>
+                    <option value="both">shows, commercials and bumpers (as legacy did)</option>
+                    <option value="filler">only commercials and bumpers</option>
+                    <option value="shows">shows only</option>
+                  </select></label>
                 <div className="ov-chans">
                   {channels.map((c) => (
                     <label key={c.name} className="ov-inline"><input type="checkbox" checked={on.has(c.name)} onChange={(e) => toggleChannel(c.name, e.target.checked)} /> {c.meta?.number ? `${c.meta.number} ` : ""}{c.name}</label>

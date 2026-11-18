@@ -74,6 +74,7 @@ export interface Overlay {
   fadeSeconds?: number;       // fade in/out (default 1)
   opacity?: number;           // whole overlay, 0-100 (default 100)
   duringFiller?: boolean;     // also over commercials / bumpers (default: programmes only)
+  fillerOnly?: boolean;       // with duringFiller: only over commercials / bumpers, never programmes
   withinContent?: boolean;    // measure from the picture, not the letterbox / pillarbox bars
   /** A single-image overlay anchored the way legacy watermarks were (corner +
    *  margins + width), so next places it without knowing the image's size.
@@ -686,7 +687,7 @@ const STEP = 1000 / CLIP_FPS;
 // 25-frame fade — so a "hard cut" fades over a second. 20 ms is under one frame.
 const CUT_FADE_MS = 20;
 
-interface AnimPlan { offset: number; hold: PeriodicTiming | null }
+interface AnimPlan { offset: number; hold: PeriodicTiming | null; out?: number }
 /** Where the overlay's (first) appearance falls in this item, and the still layer's
  *  timing for the held part between the transitions. Null = not in this item. */
 function animPlan(o: Overlay, startMs: number, endMs: number, prog: { startMs: number; stopMs: number } | undefined): AnimPlan | null {
@@ -697,7 +698,13 @@ function animPlan(o: Overlay, startMs: number, endMs: number, prog: { startMs: n
   const hold = (phase: number, len: number, freq: number): PeriodicTiming | null =>
     // next refuses a layer unless 2 x fade + hold fits in the period ("always": a day)
     len > 0 && !timed ? { timing_type: "periodic", clock: "content", frequency_ms: freq, hold_ms: Math.round(Math.min(len, freq - 2 * CUT_FADE_MS)), fade_ms: CUT_FADE_MS, phase_offset_ms: Math.round(((phase % freq) + freq) % freq) } : null;
-  if (t.mode === "always" || !t.mode) return { offset: 0, hold: hold(inMs, DAY - 1, DAY) };
+  if (t.mode === "always" || !t.mode) {
+    // "always": in at the item's start, and out so it's gone as the item ends (before
+    // a break or the next show); `out` = where the exit clip starts. Too short: no exit.
+    const itemMs = endMs - startMs;
+    if (outMs > 0 && itemMs > inMs + outMs + 2 * STEP) return { offset: 0, hold: hold(inMs, itemMs - inMs - outMs, DAY), out: itemMs - outMs };
+    return { offset: 0, hold: hold(inMs, DAY - 1, DAY) };
+  }
   const len = showMs - inMs - outMs;
   if (t.mode === "every") {
     const freq = Math.max(1, num(t.everyMinutes, 15)) * 60_000;
@@ -808,7 +815,7 @@ export const isTimed = (o: Overlay) => (o.timing?.mode ?? "always") !== "always"
 /** The overlay's transition clip for these template values (cached by content):
  *  the file, and where it sits in output pixels. */
 async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string, quiet?: boolean) => { data: string; mime: string } | null, opts: OverlayBuildOptions,
-  problems: string[], shift = { x: 0, y: 0 }): Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null> {
+  problems: string[], shift = { x: 0, y: 0 }, part?: "out"): Promise<{ file: string; origin: { x: number; y: number }; made?: boolean } | null> {
   const out = opts.output!, t = o.timing ?? { mode: "always" };
   const sx = out.w / ARTBOARD.w, sy = out.h / ARTBOARD.h;
   // `shift` (output pixels) moves the whole drawing: inside a pillar/letterboxed picture
@@ -833,6 +840,10 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
       if (k !== prev) { app.push({ t: tt, states }); prev = k; }
     }
     app.push({ t: showMs, states: null });
+  } else if (part === "out") {
+  // an "always" overlay's exit: its own clip (where it falls depends on the item's length)
+  for (let j = 0; j <= nOut; j++) app.push({ t: j * STEP, states: o.layers.map((l) => layerState(l, "out", j * STEP)) });
+  app.push({ t: (nOut + 1) * STEP, states: null });
   } else {
   for (let j = 0; j <= nIn; j++) app.push({ t: j * STEP, states: o.layers.map((l) => layerState(l, "in", j * STEP)) });
   if (mode === "always") app.push({ t: (nIn + 1) * STEP, states: null });
@@ -861,7 +872,7 @@ async function animatedClip(o: Overlay, v: OverlayVars, readAsset: (src: string,
 
   const texts = drawnKey(o, v);
   const moved = shift.x || shift.y ? { shift: [Math.round(shift.x), Math.round(shift.y)] } : {};
-  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1, ...(isTimed(o) ? { timed: true, fade: o.fadeSeconds ?? 1 } : {}), ...moved })).digest("hex");
+  const key = createHash("sha1").update(JSON.stringify({ layers: o.layers, texts, mode, freq, showMs, out, fps: CLIP_FPS, v: 1, ...(part ? { part } : {}), ...(isTimed(o) ? { timed: true, fade: o.fadeSeconds ?? 1 } : {}), ...moved })).digest("hex");
   const file = join(opts.cacheDir, `${key}.mkv`);
   if (existsSync(file)) { try { const now = new Date(); utimesSync(file, now, now); } catch { /* ignore */ } return { file, origin: { x: ox, y: oy } }; }
 
@@ -1046,12 +1057,12 @@ export async function applyOverlays(
     lastReport = now;
     if (clipsDone < clips.size) report(`overlays: ${clipsDone} of ${clips.size} animated overlay clips ready (${clipsMade} newly drawn, ${CLIP_JOBS} at a time)…`);
   };
-  const clipFor = (o: Overlay, v: OverlayVars, shift = { x: 0, y: 0 }) => {
-    const k = `${o.id}|${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}|${shift.x},${shift.y}`;
+  const clipFor = (o: Overlay, v: OverlayVars, shift = { x: 0, y: 0 }, part?: "out") => {
+    const k = `${o.id}|${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}|${shift.x},${shift.y}|${part ?? ""}`;
     let job = clips.get(k);
     if (!job) {
       if (!clips.size) report?.(`overlays: preparing animated overlay clips (${CLIP_JOBS} at a time)…`);
-      job = slot(() => animatedClip(o, v, readAsset, opts, out.problems, shift)).then((r) => { clipsDone++; if (r?.made) clipsMade++; progress(); return r; });
+      job = slot(() => animatedClip(o, v, readAsset, opts, out.problems, shift, part)).then((r) => { clipsDone++; if (r?.made) clipsMade++; progress(); return r; });
       clips.set(k, job);
     }
     return job;
@@ -1111,7 +1122,7 @@ export async function applyOverlays(
       if (o.timing?.mode === "media") {
         // only over its own file (a channel can list it too; it still waits for the file), filler or not
         if (!path || !o.timing.media?.path || mediaKey(path) !== mediaKey(o.timing.media.path)) continue;
-      } else if (filler && !o.duringFiller) continue;
+      } else if (filler ? !(o.duringFiller || o.fillerOnly) : o.fillerOnly) continue;
       if (!inSeason(o.season, s, tz)) continue;
       // a legacy graphics element: filled in for this item, as legacy did
       if (o.legacy) {
@@ -1155,6 +1166,9 @@ export async function applyOverlays(
           if (st && plan.hold) layers.push({ source: { source_type: "local", path: st.file }, ...placement(st.box), kind: "media",
             ...(o.opacity != null && o.opacity < 100 ? { opacity_percent: Math.max(0, o.opacity) } : {}),
             ...(o.withinContent ? { within_source_content: true } : {}), timing: plan.hold } as GraphicsLayer);
+          // "always": the exit transition at the item's end, from its own clip lined up the same way
+          const exit = plan.out != null ? await clipFor(o, vars, o.withinContent ? await pictureShift(o, vars, path) : undefined, "out") : null;
+          if (exit && plan.out != null) layers.push({ source: { source_type: "local", path: exit.file, in_point_ms: Math.max(0, Math.round(CLIP_AT - plan.out)) }, kind: "canvas", location: "top_left", layout: { mode: "region", origin: exit.origin } } as GraphicsLayer);
           continue;
         }
       }

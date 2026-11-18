@@ -726,7 +726,13 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                   <div className="ov-sentence">From <input style={{ width: 90 }} value={ov.season.from} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, from: e.target.value } })} /> to <input style={{ width: 90 }} value={ov.season.to ?? ""} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, to: e.target.value } })} /> (month-day, e.g. 12-01).</div>
                 )}
               </div>
-              {t.mode !== "media" && <label className="ov-inline"><input type="checkbox" checked={!!ov.duringFiller} onChange={(e) => setOpt({ duringFiller: e.target.checked })} /> Also show over commercials and bumpers</label>}
+              {t.mode !== "media" && <label className="ov-inline">Show over{" "}
+                <select style={{ width: "auto", display: "inline-block" }} value={ov.fillerOnly ? "filler" : ov.duringFiller ? "both" : "shows"}
+                  onChange={(e) => setOpt({ duringFiller: e.target.value !== "shows", fillerOnly: e.target.value === "filler" })}>
+                  <option value="shows">shows only</option>
+                  <option value="both">shows, commercials and bumpers</option>
+                  <option value="filler">only commercials and bumpers</option>
+                </select></label>}
               <label className="ov-inline"><input type="checkbox" checked={!!ov.withinContent} onChange={(e) => setOpt({ withinContent: e.target.checked })} /> Keep it inside the picture on letterboxed / 4:3 shows</label>
             </div>
 
