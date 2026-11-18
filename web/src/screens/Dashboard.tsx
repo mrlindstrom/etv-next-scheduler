@@ -1,6 +1,6 @@
 // Home page: what state everything is in, and what to do next.
 import { useEffect, useRef, useState } from "react";
-import { api, logoSrc, type AppConfig, type ChannelSummary, type LibraryStatus, type NextRunnerStatus, type SchedulerStatus } from "../api.js";
+import { api, logoSrc, type AppConfig, type ChannelSummary, type LibraryStatus, type NextRunnerStatus, type SchedulerStatus, type SelfUpdateStatus, type UpdateStatus } from "../api.js";
 import { navigate, type Page } from "../nav.js";
 
 type Step = { tone: "warn" | "err" | "info"; text: string; action: string; page: Page };
@@ -26,6 +26,20 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
     const t = window.setInterval(load, 15000);
     return () => clearInterval(t);
   }, []);
+
+  // updates: what the server last found (it checks by itself), so this never waits on GitHub
+  const [progs, setProgs] = useState<UpdateStatus | null>(null);
+  const [self, setSelf] = useState<SelfUpdateStatus | null>(null);
+  const selfMode = config?.selfUpdate ?? "notify";
+  useEffect(() => {
+    const load = () => {
+      api.updates("cached").then(setProgs).catch(() => {});
+      if (selfMode !== "off") api.selfUpdate().then(setSelf).catch(() => {});
+    };
+    load();
+    const t = window.setInterval(load, 5 * 60_000);
+    return () => clearInterval(t);
+  }, [selfMode]);
 
   // who's watching: checked more often than the rest so a tile lights up soon after a player starts
   const [watching, setWatching] = useState<Set<string> | null>(null);
@@ -61,6 +75,19 @@ export function Dashboard({ config }: { config: AppConfig | null }) {
   if (sched && !sched.enabled && list.length) steps.push({ tone: "info", text: `Auto-build is off, so schedules won't extend past ${days} days on their own.`, action: "Turn on auto-build", page: "build" });
   if (runner && runner.stale && runner.phase === "running") steps.push({ tone: "warn", text: "ErsatzTV next is running with an old lineup. Restart it to pick up changes.", action: "Open streaming", page: "streaming" });
   if (runner && runner.enabled && runner.phase !== "running" && runner.phase !== "starting") steps.push({ tone: "err", text: `ErsatzTV next is ${runner.phase}${runner.detail ? `: ${runner.detail}` : ""}.`, action: "Open streaming", page: "streaming" });
+
+  // only real version comparisons: a missing program has its own step above, and a
+  // non-ErsatzTV ffmpeg someone chose on purpose isn't worth nagging about
+  for (const c of progs?.components ?? []) {
+    if (!c.found || !c.updateAvailable || c.note || !c.latest || progs?.job?.phase === "installing") continue;
+    steps.push({ tone: "info", text: `${c.label} ${c.latest.tag} is out (you have ${c.installed}).`, action: "Update", page: "streaming" });
+  }
+  if (self?.available && self.behind > 0 && !self.ahead && !self.job) {
+    const what = `${plural(self.behind, "new change")}${self.commits[0] ? `, the latest from ${new Date(self.commits[0].date).toLocaleDateString()}` : ""}`;
+    steps.push(self.staged
+      ? { tone: "info", text: "A scheduler update is installed and waiting for a restart.", action: "Open updates", page: "settings" }
+      : { tone: "info", text: `A scheduler update is ready: ${what}${selfMode === "install" ? `. It installs by itself at ${hourLabel(config?.selfUpdateHour ?? 4)}` : ""}.`, action: "Open updates", page: "settings" });
+  }
 
   const runnerTone = !runner ? "" : runner.phase === "running" ? (runner.stale ? "warn" : "ok") : runner.phase === "starting" || runner.phase === "waiting" ? "warn" : "err";
 
@@ -196,6 +223,7 @@ function FeedLink({ label, url }: { label: string; url: string }) {
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const names = (cs: ChannelSummary[]) => cs.slice(0, 4).map((c) => c.name).join(", ") + (cs.length > 4 ? ` and ${cs.length - 4} more` : "");
+const hourLabel = (h: number) => new Date(2000, 0, 1, h).toLocaleTimeString([], { hour: "numeric" });
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 const uptime = (sec: number) => sec < 3600 ? `${Math.max(1, Math.round(sec / 60))} min` : sec < 172800 ? `${Math.round(sec / 3600)} h` : `${Math.round(sec / 86400)} days`;
 function ago(iso?: string) {

@@ -107,6 +107,11 @@ export class Updater {
 
   constructor(private store: ConfigStore, private root: string, private runner?: NextRunner) {
     this.cleanOldFiles();
+    // check on its own every few hours, so the dashboard can say when there's an update
+    // without opening the Programs card (a couple of GitHub calls each time)
+    const auto = () => { if (!this.busy()) void this.check(); };
+    setTimeout(auto, 2 * 60_000).unref();
+    setInterval(auto, 6 * 3_600_000).unref();
   }
 
   binDir(): string {
