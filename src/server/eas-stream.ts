@@ -82,6 +82,10 @@ const server = http.createServer((req, res) => {
     return;
   }
   if (u.pathname !== "/eas.stream") { res.writeHead(404); res.end(); return; }
+  // only ffmpeg ("Lavf/…") reads the stream. next 0.2.6+ first downloads a PNG layer
+  // to pre-scale it as a still; this stream never ends, so that waited out next's 30 s
+  // timeout before every segment. Turned away, next plays the live stream straight off.
+  if (!/^Lavf\//i.test(String(req.headers["user-agent"] ?? ""))) { res.writeHead(415, { "Content-Type": "text/plain" }); res.end("a live stream: read it with ffmpeg"); return; }
 
   const w = Math.min(7680, Number(u.searchParams.get("w")) || 1920), h = Math.min(4320, Number(u.searchParams.get("h")) || 1080);
   const fps = Math.min(60, Math.max(1, Number(u.searchParams.get("fps")) || 30));
