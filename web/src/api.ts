@@ -325,10 +325,16 @@ export const api = {
   matchOverlayPicture: (name: string, kind: "image" | "video" = "image"): Promise<{ name: string; file: string | null }> =>
     fetch(`/api/overlays/pictures/match?name=${encodeURIComponent(name)}&kind=${kind}`).then(j),
   overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
-  // sharing: a pack (*.overlays.json) carries the overlays with their images, pictures and fonts
-  exportOverlays: (ids: string[]): Promise<{ pack: unknown; notes: string[]; fileName: string }> => fetch("/api/overlays/export", opts("POST", { ids })).then(j),
+  // sharing: a pack (*.overlays.zip) carries the overlays with their images, pictures and fonts
+  exportOverlays: async (ids: string[]): Promise<{ zip: Blob; notes: string[]; fileName: string }> => {
+    const r = await fetch("/api/overlays/export", opts("POST", { ids }));
+    if (!r.ok) throw new Error((await r.text()) || r.statusText);
+    let notes: string[] = [];
+    try { notes = JSON.parse(decodeURIComponent(r.headers.get("x-pack-notes") ?? "%5B%5D")); } catch { /* none */ }
+    return { zip: await r.blob(), notes, fileName: decodeURIComponent(r.headers.get("x-file-name") ?? "overlays.overlays.zip") };
+  },
   importOverlays: (file: File): Promise<{ imported: { id: string; name: string }[]; notes: string[] }> =>
-    fetch("/api/overlays/import", { method: "POST", headers: { "Content-Type": "application/vnd.tvns-overlays+json" }, body: file }).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
+    fetch("/api/overlays/import", { method: "POST", headers: { "Content-Type": "application/zip" }, body: file }).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
   overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string; outOfSeason?: { id: string; name: string; when: string }[]; programmes?: { file: string; itemId: string; itemStart: number; path: string }[] }> =>
     fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),
   // (both tell any overlay pickers on the page to fetch the list again)

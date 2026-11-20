@@ -1,4 +1,4 @@
-// Sharing overlays with other people: an overlay pack (*.overlays.json) holds
+// Sharing overlays with other people: an overlay pack (*.overlays.zip) holds
 // overlays plus every image, video, picture and font they use (server:
 // src/server/overlay-share.ts).
 //   - SharePanel: pick overlays and download them as a pack
@@ -16,7 +16,7 @@ export function readError(e: unknown): string {
 /** Export overlays and save the pack to the browser's downloads. Returns the notes. */
 export async function downloadPack(ids: string[]): Promise<{ fileName: string; notes: string[] }> {
   const r = await api.exportOverlays(ids);
-  const url = URL.createObjectURL(new Blob([JSON.stringify(r.pack)], { type: "application/json" }));
+  const url = URL.createObjectURL(r.zip);
   const a = document.createElement("a");
   a.href = url; a.download = r.fileName;
   document.body.appendChild(a); a.click(); a.remove();
@@ -39,8 +39,8 @@ export function SharePanel({ list, onClose }: { list: Overlay[]; onClose: () => 
     <div className="meta-card" style={{ marginBottom: 14 }}>
       <div className="pane-head"><b>Share overlays</b><button className="ghost" onClick={onClose}>Close</button></div>
       <p className="muted" style={{ margin: "2px 0 10px", fontSize: 13 }}>
-        Pick the overlays to share. They download as one <code>.overlays.json</code> file with every image, video, picture and added font they use,
-        ready to post for others. Anyone with the scheduler brings it in with <b>Import overlays…</b> on this page.
+        Pick the overlays to share. They download as one <code>.overlays.zip</code> with every image, video, picture and added font they use,
+        ready to post for others. Anyone with the scheduler brings it in, still zipped, with <b>Import overlays…</b> on this page.
       </p>
       {!shareable.length ? <p className="muted">There's nothing to share yet: ErsatzTV legacy elements can't be shared this way.</p> : (
         <>
@@ -62,7 +62,7 @@ export function SharePanel({ list, onClose }: { list: Overlay[]; onClose: () => 
         </>
       )}
       {err && <p className="err">{err}</p>}
-      {done && <Notes ok={`Saved ${done.fileName} to your downloads. Share that file: it has everything the overlays need.`} notes={done.notes} />}
+      {done && <Notes ok={`Saved ${done.fileName} to your downloads. Share that zip: it has everything the overlays need.`} notes={done.notes} />}
     </div>
   );
 }

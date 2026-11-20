@@ -1052,8 +1052,13 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     const pick = Array.isArray(ids) && ids.length ? all.filter((o) => ids.includes(o.id)) : all;
     if (!pick.length) { reply.code(400); return { error: "Pick at least one overlay to export." }; }
     const r = await exportOverlays(pick, shareDirs());
-    if (!r.pack.overlays.length) { reply.code(400); return { error: r.notes[0] ?? "Nothing to export." }; }
-    return r;
+    if (!r.count) { reply.code(400); return { error: r.notes[0] ?? "Nothing to export." }; }
+    // the zip itself; its name and the notes (what couldn't go in) ride in headers
+    reply.header("content-type", "application/zip")
+      .header("content-disposition", `attachment; filename="pack.overlays.zip"; filename*=UTF-8''${encodeURIComponent(r.fileName)}`)
+      .header("x-file-name", encodeURIComponent(r.fileName))
+      .header("x-pack-notes", encodeURIComponent(JSON.stringify(r.notes)));
+    return reply.send(r.zip);
   });
   app.addContentTypeParser(PACK_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: MAX_PACK_BYTES }, (_req, body, done) => done(null, body));
   app.post("/api/overlays/import", async (req, reply) => {

@@ -175,9 +175,9 @@ export function Overlays() {
           <p className="muted">Graphics drawn over your channels: watermarks and bugs, lower thirds, "up next" straps. Each one can show your show's details — its name, episode, times, and what's on next — and appear always, every few minutes, or at a set point in each show.</p>
         </div>
         <div className="row" style={{ gap: 6 }}>
-          <input ref={packInput} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => void importPack(e.target.files?.[0])} />
-          <button onClick={() => packInput.current?.click()} disabled={packBusy} title="Bring in overlays someone shared (a .overlays.json file), with their images and fonts">{packBusy ? "Importing…" : "Import overlays…"}</button>
-          {!!list?.some((o) => !o.legacy) && <button onClick={() => setSharing((v) => !v)} title="Download overlays as one file, with their images and fonts, to share with others">Export…</button>}
+          <input ref={packInput} type="file" accept=".zip,.json,application/zip,application/json" style={{ display: "none" }} onChange={(e) => void importPack(e.target.files?.[0])} />
+          <button onClick={() => packInput.current?.click()} disabled={packBusy} title="Bring in overlays someone shared (a .overlays.zip), with their images and fonts">{packBusy ? "Importing…" : "Import overlays…"}</button>
+          {!!list?.some((o) => !o.legacy) && <button onClick={() => setSharing((v) => !v)} title="Download overlays as one zip, with their images and fonts, to share with others">Export…</button>}
           <button onClick={() => setImporting((v) => !v)} title="Bring in ErsatzTV legacy graphics elements (image / text / motion YAML files)">Import from legacy…</button>
           <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
         </div>
@@ -587,7 +587,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
           <button onClick={undo} disabled={!history.current.length} title="Undo (Ctrl+Z)">↶</button>
           <button onClick={redo} disabled={!future.current.length} title="Redo (Ctrl+Y)">↷</button>
           {ov.id && <button onClick={remove}>Delete</button>}
-          {ov.id && <button onClick={exportOne} disabled={busy || dirty} title={dirty ? "Save first, then export" : "Download this overlay as a file, with its images and fonts, to share with others"}>Export</button>}
+          {ov.id && <button onClick={exportOne} disabled={busy || dirty} title={dirty ? "Save first, then export" : "Download this overlay as a zip, with its images and fonts, to share with others"}>Export</button>}
           <button className="primary" onClick={save} disabled={busy}>Save</button>
         </div>
       </div>

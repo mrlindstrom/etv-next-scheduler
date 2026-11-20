@@ -16,7 +16,7 @@ from your media library, along with the TV guide, and runs next for you.
   picked by the show (a folder of show logos: `Rugrats.png` appears when Rugrats
   is next), and timing
   (always, every few minutes, or at a set point in each show).
-  Share them with others: **Export…** saves overlays as one `.overlays.json` file
+  Share them with others: **Export…** saves overlays as one `.overlays.zip`
   with the images, videos, pictures and fonts they use, and **Import overlays…**
   brings one in and puts each file where it belongs.
 - **Ways to schedule a channel**: a block schedule, a weekly grid, commercial-break
