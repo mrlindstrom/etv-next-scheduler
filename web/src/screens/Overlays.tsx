@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim, type OverlayFonts } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { LegacyImport, LegacyDesigner } from "../LegacyElements.js";
+import { SharePanel, ImportResult, downloadPack, readError } from "../OverlayShare.js";
 import { navigate } from "../nav.js";
 import { ANIM_TYPES, EASES, ANIM_STYLES, applyAnimStyle, layerState, layerStateAt, layerWindow, hasLayerTiming, fadeAt, animLengths, isAnimated, drawsLive, onlyFades, asFades, FULL, type AnimStep, type LayerState } from "../../../src/overlay-anim.js";
 
@@ -126,6 +127,18 @@ export function Overlays() {
   const [error, setError] = useState("");
   const [picking, setPicking] = useState(false);
   const [importing, setImporting] = useState(false);
+  // sharing: the export picker, and what an imported pack brought in
+  const [sharing, setSharing] = useState(false);
+  const [packResult, setPackResult] = useState<{ imported: { id: string; name: string }[]; notes: string[] } | null>(null);
+  const [packBusy, setPackBusy] = useState(false);
+  const packInput = useRef<HTMLInputElement>(null);
+  const importPack = async (file: File | undefined) => {
+    if (!file) return;
+    setPackBusy(true); setError(""); setPackResult(null);
+    try { setPackResult(await api.importOverlays(file)); await load(); }
+    catch (e) { setError(readError(e)); }
+    finally { setPackBusy(false); if (packInput.current) packInput.current.value = ""; }
+  };
   // open an overlay by id (after an import), from a fresh list
   const openId = async (id: string) => { const r = await api.overlays(); setList(r.overlays); const o = r.overlays.find((x) => x.id === id); if (o) setEditing(clone(o)); };
   const [examples, setExamples] = useState<Overlay[]>([]);
@@ -162,11 +175,16 @@ export function Overlays() {
           <p className="muted">Graphics drawn over your channels: watermarks and bugs, lower thirds, "up next" straps. Each one can show your show's details — its name, episode, times, and what's on next — and appear always, every few minutes, or at a set point in each show.</p>
         </div>
         <div className="row" style={{ gap: 6 }}>
+          <input ref={packInput} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={(e) => void importPack(e.target.files?.[0])} />
+          <button onClick={() => packInput.current?.click()} disabled={packBusy} title="Bring in overlays someone shared (a .overlays.json file), with their images and fonts">{packBusy ? "Importing…" : "Import overlays…"}</button>
+          {!!list?.some((o) => !o.legacy) && <button onClick={() => setSharing((v) => !v)} title="Download overlays as one file, with their images and fonts, to share with others">Export…</button>}
           <button onClick={() => setImporting((v) => !v)} title="Bring in ErsatzTV legacy graphics elements (image / text / motion YAML files)">Import from legacy…</button>
           <button className="primary" onClick={() => setPicking(true)}>+ New overlay</button>
         </div>
       </div>
       {error && <p className="err">{error}</p>}
+      {packResult && <ImportResult result={packResult} onClose={() => setPackResult(null)} onOpen={(id) => { setPackResult(null); void openId(id); }} />}
+      {sharing && list && <SharePanel list={list} onClose={() => setSharing(false)} />}
       {importing && <LegacyImport onClose={() => { setImporting(false); load(); }} onOpen={(id) => { setImporting(false); void openId(id); }} />}
       {showGallery && (
         <div className="meta-card ov-presets">
@@ -529,6 +547,13 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
     if (!window.confirm(`Delete "${ov.name}"? It comes off every channel that shows it.`)) return;
     await api.deleteOverlay(ov.id); onClose();
   };
+  const exportOne = async () => {
+    setBusy(true);
+    try {
+      const r = await downloadPack([ov.id]);
+      setMsg([`Saved ${r.fileName} to your downloads, with everything it uses. Others bring it in with Import overlays… on the Overlays page.`, ...r.notes].join(" "));
+    } catch (e) { setMsg(readError(e)); } finally { setBusy(false); }
+  };
   const checkRender = async () => {
     if (exact) { setExact(null); return; }
     setBusy(true);
@@ -562,6 +587,7 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
           <button onClick={undo} disabled={!history.current.length} title="Undo (Ctrl+Z)">↶</button>
           <button onClick={redo} disabled={!future.current.length} title="Redo (Ctrl+Y)">↷</button>
           {ov.id && <button onClick={remove}>Delete</button>}
+          {ov.id && <button onClick={exportOne} disabled={busy || dirty} title={dirty ? "Save first, then export" : "Download this overlay as a file, with its images and fonts, to share with others"}>Export</button>}
           <button className="primary" onClick={save} disabled={busy}>Save</button>
         </div>
       </div>

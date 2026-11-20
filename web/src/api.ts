@@ -325,6 +325,10 @@ export const api = {
   matchOverlayPicture: (name: string, kind: "image" | "video" = "image"): Promise<{ name: string; file: string | null }> =>
     fetch(`/api/overlays/pictures/match?name=${encodeURIComponent(name)}&kind=${kind}`).then(j),
   overlayExamples: (): Promise<Overlay[]> => fetch("/api/overlays/examples").then(j),
+  // sharing: a pack (*.overlays.json) carries the overlays with their images, pictures and fonts
+  exportOverlays: (ids: string[]): Promise<{ pack: unknown; notes: string[]; fileName: string }> => fetch("/api/overlays/export", opts("POST", { ids })).then(j),
+  importOverlays: (file: File): Promise<{ imported: { id: string; name: string }[]; notes: string[] }> =>
+    fetch("/api/overlays/import", { method: "POST", headers: { "Content-Type": "application/vnd.tvns-overlays+json" }, body: file }).then(j).then((r) => { window.dispatchEvent(new Event("tvn:overlays-changed")); return r; }),
   overlayMoments: (channel: string, overlay?: string): Promise<{ moments: OverlayMoment[]; note?: string; outOfSeason?: { id: string; name: string; when: string }[]; programmes?: { file: string; itemId: string; itemStart: number; path: string }[] }> =>
     fetch(`/api/troubleshoot/overlay-moments?${new URLSearchParams({ channel, ...(overlay ? { overlay } : {}) })}`).then(j),
   // (both tell any overlay pickers on the page to fetch the list again)

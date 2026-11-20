@@ -41,6 +41,7 @@ import { SqliteResolver, tagCounts, tagCombos } from "../sqlite-resolver.js";
 import { parseCollectionRef } from "../collection-ref.js";
 import type { MediaItem } from "../model.js";
 import { overlayExamplesDir, overlayOptionsFor, overlayAssetsDir, overlayCacheDir, overlayAssetFile, saveOverlayAsset, pruneOverlayCache, newOverlayId, MAX_VIDEO_BYTES, overlayPicturesDir, listPictures, savePicture, pictureFile, overlayFontsDir, listOverlayFonts, saveOverlayFont, overlayFontFile, deleteOverlayFont } from "./overlay-library.js";
+import { exportOverlays, importOverlays, PACK_CONTENT_TYPE, MAX_PACK_BYTES } from "./overlay-share.js";
 import { OVERLAY_FIELDS, OVERLAY_SLOTS, sampleVars, overlaySvg, rasterize, loadRasterizer, assetPath, fillTemplate, findPicture, fontFamilyNames, type Overlay } from "../overlays.js";
 import { planLegacyImportMulti, applyLegacyImport, applyLegacyLogos, applyLegacyWatermarks, checkPlanContent, normalizeChannelNumber, type ContentCheck } from "./legacy-channels.js";
 import { parseArtRef, artPosterPath, artImageUrl } from "../art-ref.js";
@@ -1041,6 +1042,24 @@ export async function registerRoutes(app: FastifyInstance, store: ConfigStore, s
     // take it off every channel that showed it
     for (const m of store.channelMetas()) if (m.overlays?.includes(id)) store.upsertChannelMeta(m.name, { overlays: m.overlays.filter((x) => x !== id) });
     return { ok: true };
+  });
+  // sharing: an overlay pack (*.overlays.json) carries overlays with their images,
+  // videos, pictures and fonts (see overlay-share.ts)
+  const shareDirs = () => ({ assetsDir: overlayAssetsDir(store, ROOT), picturesDir: overlayPicturesDir(store, ROOT), fontsDir: overlayFontsDir(store, ROOT) });
+  app.post("/api/overlays/export", async (req, reply) => {
+    const ids = ((req.body ?? {}) as { ids?: string[] }).ids;
+    const all = store.listOverlays() as Overlay[];
+    const pick = Array.isArray(ids) && ids.length ? all.filter((o) => ids.includes(o.id)) : all;
+    if (!pick.length) { reply.code(400); return { error: "Pick at least one overlay to export." }; }
+    const r = await exportOverlays(pick, shareDirs());
+    if (!r.pack.overlays.length) { reply.code(400); return { error: r.notes[0] ?? "Nothing to export." }; }
+    return r;
+  });
+  app.addContentTypeParser(PACK_CONTENT_TYPE, { parseAs: "buffer", bodyLimit: MAX_PACK_BYTES }, (_req, body, done) => done(null, body));
+  app.post("/api/overlays/import", async (req, reply) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) { reply.code(400); return { error: "Send the overlay pack (.overlays.json) as the request body." }; }
+    try { return await importOverlays(req.body, shareDirs(), store.listOverlays().map((o: Overlay) => o.name), (o) => store.saveOverlay(o as Overlay & { [k: string]: unknown })); }
+    catch (e) { reply.code(400); return { error: (e as Error).message }; }
   });
   // images / videos for overlay layers arrive as the raw file body
   app.post("/api/overlays/assets", async (req, reply) => {
