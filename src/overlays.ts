@@ -746,6 +746,14 @@ function usedVars(layers: OverlayLayer[], v: OverlayVars): OverlayVars {
   return out;
 }
 
+/** next's opacity for a layer that plays straight from its file (a lone image, a
+ *  video): the overlay's opacity times the layer's own. Drawn layers (the PNGs and
+ *  clips) already have the layer's opacity in them. */
+function fileOpacity(o: Overlay, layerOpacity?: number): { opacity_percent?: number } {
+  const f = [o.opacity, layerOpacity].reduce<number>((a, p) => a * (p != null && p < 100 ? Math.max(0, p) / 100 : 1), 1);
+  return f < 0.999 ? { opacity_percent: Math.round(f * 1000) / 10 } : {};
+}
+
 /** An overlay drawn live: next graphics layers for one appearance (overlay-level
  *  timing `base`). Neighbouring layers with the same time on screen share a PNG. */
 function liveLayers(o: Overlay, v: OverlayVars, base: PeriodicTiming, opts: OverlayBuildOptions): GraphicsLayer[] {
@@ -791,7 +799,7 @@ function liveLayers(o: Overlay, v: OverlayVars, base: PeriodicTiming, opts: Over
       flush();
       const want = resolveSrc(l.src, v);
       const p = assetPath(want, opts.assetsDir, opts.channelLogo, "video") || assetPath(resolveSrc(l.fallback, v), opts.assetsDir, opts.channelLogo, "video");
-      if (p && existsSync(p)) out.push({ source: { source_type: "local", path: p }, ...placement(l), kind: "media", timing: t, ...common } as GraphicsLayer);
+      if (p && existsSync(p)) out.push({ source: { source_type: "local", path: p }, ...placement(l), kind: "media", timing: t, ...common, ...fileOpacity(o, l.opacity) } as GraphicsLayer);
       return;
     }
     const key = JSON.stringify(t);
@@ -990,9 +998,11 @@ export async function applyOverlays(
     return assets.get(p)!;
   };
   // rendered stills, by overlay + resolved text (a show's strap renders once per build)
-  const stills = new Map<string, Promise<{ file: string; box: Box } | null>>();
+  // layerOpacity: a lone image played from its file, which next has to fade itself
+  type Still = { file: string; box: Box; layerOpacity?: number };
+  const stills = new Map<string, Promise<Still | null>>();
   await mkdir(opts.cacheDir, { recursive: true });
-  const still = (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
+  const still = (o: Overlay, v: OverlayVars): Promise<Still | null> => {
     const key = `${JSON.stringify(o.layers)}|${JSON.stringify(drawnKey(o, v))}`;
     const have = stills.get(key);
     if (have) return have;
@@ -1000,8 +1010,8 @@ export async function applyOverlays(
     stills.set(key, job);
     return job;
   };
-  const renderStill = async (o: Overlay, v: OverlayVars): Promise<{ file: string; box: Box } | null> => {
-    let r: { file: string; box: Box } | null = null;
+  const renderStill = async (o: Overlay, v: OverlayVars): Promise<Still | null> => {
+    let r: Still | null = null;
     const only = o.layers.length === 1 && o.layers[0].type === "image" ? o.layers[0] : null;
     if (only) {
       // a lone image plays straight from its file (keeps animated GIFs moving),
@@ -1018,7 +1028,7 @@ export async function applyOverlays(
         const shown = o.anchor && o.layers.length === 1 ? (o.anchor.widthPercent ? (o.anchor.widthPercent / 100) * ARTBOARD.w : 0) : only.w;
         // ffmpeg can't read SVG: draw it to a PNG at twice its on-screen size
         const svgPng = /\.svg$/i.test(p) ? await svgToPng(p, Math.max(64, (shown || 240) * 2), only.w && only.h ? only.h / only.w : 1, opts.cacheDir) : null;
-        r = { file: svgPng || (shown > 0 && await downscaled(p, shown * 2, opts.cacheDir)) || p, box: only };
+        r = { file: svgPng || (shown > 0 && await downscaled(p, shown * 2, opts.cacheDir)) || p, box: only, layerOpacity: only.opacity };
       }
       else out.problems.push(only.src === CHANNEL_LOGO ? "the channel has no logo file for its logo overlay" : `image ${only.src} isn't on this machine`);
     } else {
@@ -1164,7 +1174,7 @@ export async function applyOverlays(
           note(item.id, o.id, Math.max(0, plan.offset));
           const st = plan.hold ? await still(o, vars) : null;
           if (st && plan.hold) layers.push({ source: { source_type: "local", path: st.file }, ...placement(st.box), kind: "media",
-            ...(o.opacity != null && o.opacity < 100 ? { opacity_percent: Math.max(0, o.opacity) } : {}),
+            ...fileOpacity(o, st.layerOpacity),
             ...(o.withinContent ? { within_source_content: true } : {}), timing: plan.hold } as GraphicsLayer);
           // "always": the exit transition at the item's end, from its own clip lined up the same way
           const exit = plan.out != null ? await clipFor(o, vars, o.withinContent ? await pictureShift(o, vars, path) : undefined, "out") : null;
@@ -1188,7 +1198,7 @@ export async function applyOverlays(
         const place = o.anchor && o.layers.length === 1
           ? { location: o.anchor.location, horizontal_margin_percent: o.anchor.hMargin, vertical_margin_percent: o.anchor.vMargin, ...(o.anchor.widthPercent ? { width_percent: o.anchor.widthPercent } : {}) }
           : placement(st.box);
-        layers.push({ source: { source_type: "local", path: st.file }, ...place, ...common } as GraphicsLayer);
+        layers.push({ source: { source_type: "local", path: st.file }, ...place, ...common, ...fileOpacity(o, st.layerOpacity) } as GraphicsLayer);
       }
       for (const l of o.layers) {
         if (l.type !== "video") continue;
@@ -1196,7 +1206,7 @@ export async function applyOverlays(
         const p = assetPath(want, opts.assetsDir, opts.channelLogo, "video") || assetPath(resolveSrc(l.fallback, vars), opts.assetsDir, opts.channelLogo, "video");
         if (!p && want.startsWith(MATCH_PREFIX)) { if (want.length > MATCH_PREFIX.length) unmatched.add(want.slice(MATCH_PREFIX.length)); continue; }
         if (!existsSync(p)) { out.problems.push(`video ${l.src} isn't on this machine`); continue; }
-        layers.push({ source: { source_type: "local", path: p }, ...placement(l), ...common } as GraphicsLayer);
+        layers.push({ source: { source_type: "local", path: p }, ...placement(l), ...common, ...fileOpacity(o, l.opacity) } as GraphicsLayer);
       }
     }
     // next draws later layers on top: legacy elements by z_index, lowest first
