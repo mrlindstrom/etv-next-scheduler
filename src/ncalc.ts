@@ -188,6 +188,8 @@ export function parseOpacity(src: string): OpacityPlan {
       const v = nums as number[];
       const pts = /points/i.test(body.name) ? v : (() => { const [s, f, p] = v; return f <= 0 ? [s, s, s + p, s + p] : [s, s + f, s + f + p, s + 2 * f + p]; })();
       if (pts.length === 4 && pts[0] <= pts[1] && pts[1] <= pts[2] && pts[2] <= pts[3]) {
+        // no time between its start and end (e.g. all four 0): never visible, as in legacy
+        if (pts[3] <= pts[0]) return { kind: "constant", opacity: 0 };
         // a time_of_day / channel clock without a period is once a day, at that time
         if (clock === "wall" && everyS == null) everyS = 86_400;
         return { kind: "fade", fade: { clock, everyS, startS: pts[0], fadeInS: pts[1] - pts[0], holdS: pts[2] - pts[1], fadeOutS: pts[3] - pts[2], peak: Math.max(0, Math.min(1, peak)) } };
