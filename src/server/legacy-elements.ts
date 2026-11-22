@@ -13,7 +13,7 @@ import type { FastifyInstance } from "fastify";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, basename, isAbsolute } from "node:path";
 import { execFile } from "node:child_process";
-import type { ConfigStore } from "./config.js";
+import { scalingFor, type ConfigStore } from "./config.js";
 import { getResolver } from "./resolverCache.js";
 import { overlayCacheDir, newOverlayId } from "./overlay-library.js";
 import { legacyKindOf, legacyRef, legacyVars, fillLegacy, legacyLayers, epgEntriesOf, missingPaths, imageSize, legacyPosition, LEGACY_KINDS, type LegacyElement, type LegacyKind, type LegacyContext } from "../legacy-graphics.js";
@@ -148,10 +148,12 @@ export function registerLegacyElementRoutes(app: FastifyInstance, store: ConfigS
     if (!item) { reply.code(400); return { error: match ? `Nothing on ${ch} plays a file whose name contains “${body.match}”.` : `${ch}'s playout is empty.` }; }
     const resolver = (() => { try { return getResolver(libDb()); } catch { return null; } })();
     const output = { w: nc().video?.width || 1920, h: nc().video?.height || 1080 };
+    // the channel's scaling: crop / stretch fill the frame, so "inside the picture" is all of it
+    const scaling = scalingFor(nc(), meta), fills = scaling !== "scale_and_pad";
     const guide = xmltvGuide(join(runtime, "xmltv", `${meta.tvgId || ch}.xml`));
     const tz = store.get().tz;
     const ctx: LegacyContext = { path: item.source!.path!, startMs: Date.parse(item.start), stopMs: Date.parse(item.finish), tz, guide, output,
-      info: (p) => { try { return (resolver as any)?.templateData?.(p) ?? null; } catch { return null; } } };
+      info: (p) => { try { const d = (resolver as any)?.templateData?.(p) ?? null; return d && fills ? { ...d, dar: null } : d; } catch { return null; } } };
     const vars = legacyVars(ctx, epgEntriesOf(el.yaml));
     const problems: string[] = [];
     let yaml = "", def: Record<string, any> | null = null;
@@ -165,7 +167,9 @@ export function registerLegacyElementRoutes(app: FastifyInstance, store: ConfigS
       const t = layers[0]?.layer.timing;
       const atS = t && t.clock === "content" ? ((t.phase_offset_ms ?? 0) + (t.fade_ms ?? 0) + Math.min(500, (t.hold_ms ?? 0) / 2)) / 1000 : Math.min(5, (ctx.stopMs - ctx.startMs) / 3000);
       const frame = await new Promise<Buffer | null>((done) => {
-        execFile(ffmpeg, ["-hide_banner", "-loglevel", "error", "-ss", atS.toFixed(2), "-i", ctx.path, "-frames:v", "1", "-vf", `scale=${output.w}:${output.h}:force_original_aspect_ratio=decrease,pad=${output.w}:${output.h}:(ow-iw)/2:(oh-ih)/2`, "-f", "image2", "-c:v", "mjpeg", "pipe:1"],
+        execFile(ffmpeg, ["-hide_banner", "-loglevel", "error", "-ss", atS.toFixed(2), "-i", ctx.path, "-frames:v", "1", "-vf", scaling === "stretch" ? `scale=${output.w}:${output.h},setsar=1`
+          : scaling === "crop" ? `scale=${output.w}:${output.h}:force_original_aspect_ratio=increase,crop=${output.w}:${output.h},setsar=1`
+          : `scale=${output.w}:${output.h}:force_original_aspect_ratio=decrease,pad=${output.w}:${output.h}:(ow-iw)/2:(oh-ih)/2`, "-f", "image2", "-c:v", "mjpeg", "pipe:1"],
           { encoding: "buffer", windowsHide: true, timeout: 20_000, maxBuffer: 32 << 20 }, (err, out) => done(err || !out?.length ? null : out));
       });
       const W = output.w, H = output.h;

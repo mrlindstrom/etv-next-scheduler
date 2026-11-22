@@ -112,6 +112,8 @@ export interface OverlayBuildOptions {
   /** this scheduler's address as next reaches it, for overlays drawn live
    *  (`${liveBase}/graphics/overlay.png`); without it they're pre-rendered */
   liveBase?: string;
+  /** the channel crops or stretches every picture to fill the output (no black bars) */
+  fillsFrame?: boolean;
   /** animated overlays: ffmpeg to encode their transition clips, and the output size they're drawn at */
   ffmpeg?: string;
   output?: { w: number; h: number };
@@ -973,7 +975,8 @@ export async function applyOverlays(
   const find = (ref: string): Overlay | null => lib.get(ref) ?? lib.get(ref.toLowerCase()) ?? lib.get(`legacy:${legacyRef(ref)}`)
     ?? (IMAGE_FILE.test(ref) && existsSync(ref) ? adHocOverlay(ref) : null);
   const infoCache = new Map<string, LegacyItemData | null>();
-  const info = (p: string) => { if (!infoCache.has(p)) { let d: LegacyItemData | null = null; try { d = itemInfo?.(p) ?? null; } catch { /* no library */ } infoCache.set(p, d); } return infoCache.get(p)!; };
+  // a channel that crops or stretches has no bars: every picture has the frame's shape
+  const info = (p: string) => { if (!infoCache.has(p)) { let d: LegacyItemData | null = null; try { d = itemInfo?.(p) ?? null; } catch { /* no library */ } if (d && opts.fillsFrame) d = { ...d, dar: null }; infoCache.set(p, d); } return infoCache.get(p)!; };
   const ffprobe = opts.ffmpeg ? opts.ffmpeg.replace(/ffmpeg(\.exe)?$/i, (m) => m.replace(/ffmpeg/i, "ffprobe")) : "ffprobe";
   const g = guide.slice().sort((a, b) => a.startMs - b.startMs);
   // guide times keep fractions of a millisecond; item times are written to whole

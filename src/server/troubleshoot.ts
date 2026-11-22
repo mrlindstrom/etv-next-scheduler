@@ -20,7 +20,7 @@ import { copyFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:
 import { createServer } from "node:net";
 import { cpus, totalmem, release, platform, arch } from "node:os";
 import { basename, extname, isAbsolute, join } from "node:path";
-import type { ConfigStore, NextConfig } from "./config.js";
+import { scalingFor, type ConfigStore, type NextConfig } from "./config.js";
 import type { NextRunner } from "./next-runner.js";
 import { channelConfigJson, upNextOptionsFor, writeGuideConfig, guideSource, GUIDE_CLI } from "./nextgen.js";
 import { upcoming } from "./graphics.js";
@@ -531,7 +531,7 @@ export function registerTroubleshootRoutes(app: FastifyInstance, ctx: { store: C
     for (const f of files) await writeFile(join(dir, f.path), f.text, "utf8");
     const json = (o: unknown) => JSON.stringify(o, null, 2).replaceAll("__DIR__", dir.replace(/\\/g, "\\\\"));
     const chCfg: NextConfig = { ...cfg, video: { ...cfg.video, accel } };
-    await writeFile(join(dir, "channels", "test.config.json"), json(channelConfigJson("test", chCfg)), "utf8");
+    await writeFile(join(dir, "channels", "test.config.json"), json(channelConfigJson("test", chCfg, false, undefined, scalingFor(cfg, req.channel ? store.channelMeta(String(req.channel)) : undefined))), "utf8");
     await writeFile(join(dir, "lineup.json"), json({
       server: { bind_address: "127.0.0.1", port }, output: { folder: join(dir, "output") }, xmltv: { folder: "./xmltv" },
       channels: [{ number: "1", name: "Test play", config: "./channels/test.config.json", tvg_id: "test-play", logo: "", group: "" }],

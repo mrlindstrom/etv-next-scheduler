@@ -7,6 +7,7 @@ import { join, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import type { ConfigStore, NextConfig, ChannelMeta } from "./config.js";
+import { scalingFor } from "./config.js";
 import type { UpNextOptions } from "../engine.js";
 import type { PlayoutItem, Playout } from "../model.js";
 import { PLAYOUT_VERSION } from "../model.js";
@@ -100,7 +101,9 @@ export function passesThrough(meta: ChannelMeta, moduleId: string | undefined): 
  *  so older next builds keep accepting every other channel. */
 export const CHANNEL_CONFIG_VERSION_FALLBACK_IMAGE = "https://ersatztv.org/channel/version/0.1.3";
 
-export function channelConfigJson(name: string, cfg: NextConfig, copy = false, backgroundImage?: string) {
+/** `scaling`: how a picture of another shape fits the output (next's scaling_mode); only
+ *  written when it isn't next's default, black bars. */
+export function channelConfigJson(name: string, cfg: NextConfig, copy = false, backgroundImage?: string, scaling = "scale_and_pad") {
   const mode = copy ? { mode: "copy" } : {};
   return {
     version: backgroundImage ? CHANNEL_CONFIG_VERSION_FALLBACK_IMAGE : CHANNEL_CONFIG_VERSION,
@@ -119,6 +122,7 @@ export function channelConfigJson(name: string, cfg: NextConfig, copy = false, b
       video: {
         ...mode,
         format: cfg.video.codec, bit_depth: cfg.video.bitDepth, width: cfg.video.width, height: cfg.video.height,
+        ...(scaling !== "scale_and_pad" ? { scaling_mode: scaling } : {}),
         bitrate_kbps: cfg.video.bitrateKbps, buffer_kbps: cfg.video.bufferKbps, accel: cfg.video.accel ?? "",
         filters: tonemapFilters(cfg.video.tonemapAlgorithm),
       },
@@ -218,7 +222,7 @@ export async function generateNext(store: ConfigStore, root: string): Promise<Ap
     let image: string | undefined;
     try { image = await fallbackImageFor(m, cfg, root, logosDir, fallbackDir); } catch { /* black */ }
     if (image) cards.add(image);
-    await writeFile(p, JSON.stringify(channelConfigJson(m.name, cfg, passesThrough(m, moduleOf.get(m.name)), image), null, 2), "utf8");
+    await writeFile(p, JSON.stringify(channelConfigJson(m.name, cfg, passesThrough(m, moduleOf.get(m.name)), image, scalingFor(cfg, m)), null, 2), "utf8");
     written.push({ name: m.name, config: p });
   }
   pruneFallbackDir(fallbackDir, cards);

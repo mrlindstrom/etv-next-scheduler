@@ -289,6 +289,13 @@ export function Streaming() {
               <option value="linear">linear</option><option value="mobius">mobius</option><option value="hable">hable</option><option value="reinhard">reinhard</option><option value="bt2390">bt2390</option>
             </select>
           </label>
+          <label title="What happens when a video's shape doesn't match the width and height above, e.g. a widescreen show on a 4:3 channel. Each channel can pick its own on the Channels page.">Other shapes
+            <select value={cfg.video.scalingMode || "scale_and_pad"} onChange={(e) => setV({ scalingMode: e.target.value })}>
+              <option value="scale_and_pad">Fit, with black bars</option>
+              <option value="crop">Fill, cutting off the edges</option>
+              <option value="stretch">Stretch to fill</option>
+            </select>
+          </label>
         </div>
         <div className="row">
           <label>Audio codec<input value={cfg.audio.codec} onChange={(e) => setA({ codec: e.target.value })} /></label>

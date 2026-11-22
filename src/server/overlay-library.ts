@@ -14,7 +14,7 @@ import { existsSync, readdirSync, statSync, unlinkSync, rmSync } from "node:fs";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { join, isAbsolute, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ConfigStore } from "./config.js";
+import { scalingFor, type ConfigStore } from "./config.js";
 import { sniffImage, logoPath, isManagedLogo } from "./channel-logos.js";
 import { CHANNEL_LOGO, setOverlayExamplesDir, setOverlayPicturesDir, addFontDir, addFontFile, forgetFontFile, fontFileFamilies, type Overlay, type OverlayBuildOptions } from "../overlays.js";
 import type { WatermarkLocation } from "../model.js";
@@ -66,6 +66,8 @@ export function overlayOptionsFor(store: ConfigStore, channelName: string, root:
     picturesDir: overlayPicturesDir(store, root),
     ffmpeg: existsSync(ff) ? ff : (nc.ffmpegPath || "ffmpeg"),
     output,
+    // crop / stretch: every picture fills the frame, so "inside the picture" is the whole frame
+    fillsFrame: scalingFor(nc, meta) !== "scale_and_pad",
     channelLogo: meta?.logo && isManagedLogo(meta.logo) ? logoPath(join(abs(root, store.getNextConfig().runtimeDir), "logos"), meta.logo) ?? undefined : undefined,
   };
 }

@@ -55,6 +55,7 @@ export interface ChannelMeta {
   upNextAudio: string;  // absolute path to a background audio/music bed for the card ("" = silent)
   upNextText: string;   // how the card's text is rendered: "image" (PNG layers) | "subtitles" (burned ASS via libass)
   encoding: string;     // "" (default: pass remote streams through, re-encode the rest) | "transcode" | "copy" (next's copy mode)
+  scaling: string;      // a picture of another shape: "" (Streaming default) | "scale_and_pad" | "crop" | "stretch"
   fallbackImage: string; // shown when there's nothing to play: "" (Streaming default) | "black" | "standby" | an image path
   overlays: string[];    // overlay ids drawn over every programme (watermark / bug, straps…)
   eas: boolean;          // emergency alerts are shown on this channel (when alerts are on)
@@ -76,7 +77,9 @@ export interface NextConfig {
   ffprobePath: string;
   // default fallback for channels without their own: "black" | "standby" (a "We'll be right back" card) | an image path
   fallbackImage: string;
-  video: { width: number; height: number; codec: string; bitDepth: number; bitrateKbps: number; bufferKbps: number; accel: string; tonemapAlgorithm: string };
+  // scalingMode: how a picture of another shape fills width x height (next's scaling_mode):
+  // "scale_and_pad" (black bars) | "crop" (fill, cutting off the overflow) | "stretch"
+  video: { width: number; height: number; codec: string; bitDepth: number; bitrateKbps: number; bufferKbps: number; accel: string; tonemapAlgorithm: string; scalingMode: string };
   audio: { codec: string; bitrateKbps: number; bufferKbps: number; channels: number; sampleRateHz: number; normalizeLoudness: boolean };
   // Live "coming up next" graphics-canvas card inserted at the end of each break.
   // Served by this server's /graphics/upnext endpoint (must be running during
@@ -99,12 +102,19 @@ export interface NextConfig {
 export function defaultNextConfig(): NextConfig {
   return {
     runtimeDir: "runtime", outputFolder: "./output", binaryPath: process.platform === "win32" ? "bin/ersatztv.exe" : "bin/ersatztv", bindAddress: "0.0.0.0", port: 8409, publicUrl: "", ffmpegPath: "", ffprobePath: "", fallbackImage: "black",
-    video: { width: 1920, height: 1080, codec: "h264", bitDepth: 8, bitrateKbps: 2000, bufferKbps: 4000, accel: "", tonemapAlgorithm: "linear" },
+    video: { width: 1920, height: 1080, codec: "h264", bitDepth: 8, bitrateKbps: 2000, bufferKbps: 4000, accel: "", tonemapAlgorithm: "linear", scalingMode: "scale_and_pad" },
     audio: { codec: "aac", bitrateKbps: 192, bufferKbps: 384, channels: 2, sampleRateHz: 48000, normalizeLoudness: true },
     upNext: { enabled: false, count: 3, durationMs: 12000, fontFile: "C:/Windows/Fonts/arialbd.ttf" },
     guide: { enabled: false, number: "100", name: "Guide", group: "", tvgId: "guide", musicFolder: "", columns: 3, scrollSpeed: 60, refreshMin: 30, theme: "classic", promoRotateSec: 30, promoFolder: "", logo: "" },
     hdhr: { enabled: false, port: 5004, tuners: 4, name: "tv-next-scheduler", deviceId: "" },
   };
+}
+
+/** How a channel fits a picture of another shape into the output: its own setting, else
+ *  the Streaming default. One of next's scaling modes. */
+export function scalingFor(cfg: NextConfig, meta?: Pick<ChannelMeta, "scaling"> | null): string {
+  const ok = (m?: string) => m === "scale_and_pad" || m === "crop" || m === "stretch";
+  return ok(meta?.scaling) ? meta!.scaling : ok(cfg.video.scalingMode) ? cfg.video.scalingMode : "scale_and_pad";
 }
 
 export interface BuildRecord {
@@ -155,6 +165,7 @@ export class ConfigStore {
     }
     if (!cols.includes("logo_generated")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN logo_generated INTEGER DEFAULT 0`);
     if (!cols.includes("encoding")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN encoding TEXT DEFAULT ''`);
+    if (!cols.includes("scaling")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN scaling TEXT DEFAULT ''`);
     if (!cols.includes("fallback_image")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN fallback_image TEXT DEFAULT ''`);
     if (!cols.includes("overlays")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN overlays TEXT DEFAULT ''`);
     if (!cols.includes("eas")) this.db.exec(`ALTER TABLE channel_meta ADD COLUMN eas INTEGER DEFAULT 1`);
@@ -258,7 +269,7 @@ export class ConfigStore {
   // --- channel registry (metadata for the ErsatzTV next lineup) --------------
   channelMetas(): ChannelMeta[] {
     return (this.db.prepare(`SELECT * FROM channel_meta ORDER BY sort, number, name`).all() as any[])
-      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", fallbackImage: r.fallback_image ?? "", overlays: parseList(r.overlays), eas: r.eas !== 0 }));
+      .map((r) => ({ name: r.name, number: r.number ?? "", tvgId: r.tvg_id ?? "", logo: r.logo ?? "", logoGenerated: !!r.logo_generated, group: r.group ?? "", enabled: !!r.enabled, sort: r.sort ?? 0, audioLang: r.audio_lang ?? "", subtitles: r.subtitles || "off", upNextTheme: r.up_next_theme ?? "splat", upNextAudio: r.up_next_audio ?? "", upNextText: r.up_next_text ?? "image", encoding: r.encoding ?? "", scaling: r.scaling ?? "", fallbackImage: r.fallback_image ?? "", overlays: parseList(r.overlays), eas: r.eas !== 0 }));
   }
   channelMeta(name: string): ChannelMeta | undefined {
     return this.channelMetas().find((c) => c.name === name);
@@ -279,7 +290,7 @@ export class ConfigStore {
     const prev = this.channelMeta(name)!;
     if (patch.logo !== undefined && patch.logo !== prev.logo) patch = { ...patch, logoGenerated: !!patch.logoGenerated };
     else { const { logoGenerated: _ignored, ...rest } = patch; patch = rest; }
-    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", fallbackImage: "fallback_image", overlays: "overlays", eas: "eas" };
+    const cols: Record<string, string> = { number: "number", tvgId: "tvg_id", logo: "logo", logoGenerated: "logo_generated", group: '"group"', enabled: "enabled", sort: "sort", audioLang: "audio_lang", subtitles: "subtitles", upNextTheme: "up_next_theme", upNextAudio: "up_next_audio", upNextText: "up_next_text", encoding: "encoding", scaling: "scaling", fallbackImage: "fallback_image", overlays: "overlays", eas: "eas" };
     for (const [k, col] of Object.entries(cols)) {
       let v = (patch as any)[k];
       if (v === undefined) continue;

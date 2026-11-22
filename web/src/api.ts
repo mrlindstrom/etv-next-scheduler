@@ -7,7 +7,7 @@ export interface UpdateStatus { binDir: string; checkedAt: number | null; checkE
 export interface NextRunnerStatus { enabled: boolean; phase: "stopped" | "waiting" | "starting" | "running" | "crashed"; detail: string; problem: string | null; pid: number | null; uptimeSec: number; port: number; stale: boolean; hasPlayouts: boolean; binaryFound: boolean; binaryPath: string; version: string | null; versionWarning: string | null; restarts: number; lastExit: { code: number | null; signal: string | null; at: number } | null; log: string[]; }
 export interface SchedulerStatus { enabled: boolean; intervalMin?: number; thresholdHours?: number; running?: boolean; lastTick?: string | null; nextTickAt?: string | null; log?: string[]; }
 export interface VerifyResult { ok: boolean; problems?: string[]; error?: string; path?: string; stats?: { mediaItems: number; episodes: number; shows: number; chapters: number }; }
-export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; fallbackImage: string; overlays: string[]; eas?: boolean; }
+export interface ChannelMeta { name: string; number: string; tvgId: string; logo: string; logoGenerated: boolean; group: string; enabled: boolean; sort: number; audioLang: string; subtitles: string; upNextTheme: string; upNextAudio: string; upNextText: string; encoding: string; scaling?: string; fallbackImage: string; overlays: string[]; eas?: boolean; }
 export type ContentFix = "refresh-metadata" | "scan-source" | "import-library" | "enable-library" | null;
 export interface ContentCheck { items: number; airsNothing: boolean; problems: { role: string; what: string; reason: string; fix: ContentFix }[]; }
 export interface LegacyChannelPlan { key: string; playoutId: number; channelId: number; number: string; name: string; kind: "classic" | "block" | "yaml" | "other"; schedule: string | null; file: string | null; status: "new" | "exists" | "unsupported"; config: string | null; warnings: string[]; check: ContentCheck | null; caseClash?: string; numberClash?: string; suggestedNumber?: string; logo?: { hash?: string; file?: string; url?: string }; hasLogo?: boolean; watermark?: { row: { Id: number; Name: string }; file?: string }; hasWatermark?: boolean; }
@@ -84,7 +84,7 @@ export interface NextConfig {
   runtimeDir: string; outputFolder: string; bindAddress: string; port: number; publicUrl: string; ffmpegPath: string; ffprobePath: string;
   /** shown when a channel has nothing to play: "black" | "standby" | an image path (channels can override) */
   fallbackImage: string;
-  video: { width: number; height: number; codec: string; bitDepth: number; bitrateKbps: number; bufferKbps: number; accel: string; tonemapAlgorithm: string };
+  video: { width: number; height: number; codec: string; bitDepth: number; bitrateKbps: number; bufferKbps: number; accel: string; tonemapAlgorithm: string; scalingMode?: string };
   audio: { codec: string; bitrateKbps: number; bufferKbps: number; channels: number; sampleRateHz: number; normalizeLoudness: boolean };
   upNext: { enabled: boolean; count: number; durationMs: number; fontFile: string };
   guide: { enabled: boolean; number: string; name: string; group: string; tvgId: string; musicFolder: string; columns: number; scrollSpeed: number; refreshMin: number; theme: string; promoRotateSec: number; promoFolder: string; logo: string };

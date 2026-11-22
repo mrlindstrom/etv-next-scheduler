@@ -430,12 +430,21 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
                       <option value="copy">Pass through when possible</option>
                     </select>
                   </label>
+                  <label>Other shapes
+                    <select value={meta.scaling ?? ""} onChange={(e) => updMetaVal("scaling")(e.target.value)}>
+                      <option value="">Default (the Streaming page's setting)</option>
+                      <option value="scale_and_pad">Fit, with black bars</option>
+                      <option value="crop">Fill, cutting off the edges</option>
+                      <option value="stretch">Stretch to fill</option>
+                    </select>
+                  </label>
                 </div>
                 <p className="muted" style={{ fontSize: 12, margin: "2px 0 6px" }}>
                   {meta.encoding === "copy" || (meta.encoding !== "transcode" && selMode === "remote")
                     ? "Video and audio that ErsatzTV next can use as they are (H.264 or HEVC, with AAC, AC-3 or MP3) go out untouched, which saves most of the CPU. They keep their own resolution, so mixed sources can look uneven, and some players stutter when the format changes between items. Everything else, including up-next cards and anything with subtitles, is re-encoded. Loudness normalization is off for this channel, since ErsatzTV next can't level audio it passes through."
                     : "Everything is re-encoded to the Video & audio settings on the Streaming page, so every item looks the same."}
-                  {" "}Save, then restart ErsatzTV next on the Streaming page for it to take effect.
+                  {" "}Other shapes: a video that isn't the channel's shape (a widescreen show on a 4:3 channel, or a 4:3 cartoon on a 16:9 one) is fitted with black bars, filled by cutting off its edges, or stretched, like legacy's scaling behavior. With fill or stretch, overlays kept inside the picture use the whole frame.
+                  {" "}Save, then restart ErsatzTV next on the Streaming page for it to take effect (and rebuild the channel if it has overlays).
                 </p>
                 <div className="meta-subhead" style={{ margin: "10px 2px 2px", fontSize: 11, fontWeight: 700, letterSpacing: 1, opacity: 0.6, textTransform: "uppercase" }}>“Coming up next” card</div>
                 <div className="row">
