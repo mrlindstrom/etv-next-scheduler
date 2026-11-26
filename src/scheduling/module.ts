@@ -27,8 +27,15 @@ export type Field =
   | { type: "tags"; key: string; label: string; help?: string; libraries?: string; collection?: string; showIf?: ShowIf }
   // a dropdown of the other channels (value is the channel name)
   | { type: "channel"; key: string; label: string; help?: string; showIf?: ShowIf }
+  // tick-boxes for a set of numbers (days of the week, months…; value is a number[], none = any),
+  // with optional one-click presets
+  | { type: "picks"; key: string; label: string; help?: string; options: { value: number; label: string }[]; presets?: { label: string; values: number[] }[]; showIf?: ShowIf }
   // a repeatable group of fields (e.g. the list of schedule blocks)
-  | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; fields: Field[]; showIf?: ShowIf };
+  // `itemNoun` names an untitled item ("block"); `collapsible` lets each item fold away;
+  // `addCopy` adds a second button that starts an item with a copy of a sibling field
+  // (e.g. a new alternate schedule starting from the main blocks)
+  | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; itemNoun?: string; collapsible?: boolean;
+      addCopy?: { label: string; from: string; to: string }; fields: Field[]; showIf?: ShowIf };
 
 export interface ModuleSummary { valid: boolean; error?: string; [k: string]: any; }
 

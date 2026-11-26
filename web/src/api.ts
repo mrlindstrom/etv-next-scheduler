@@ -36,7 +36,7 @@ export interface LegacyElement { kind: "image" | "text" | "motion" | "subtitle" 
 export interface LegacyImported { id: string; name: string; kind: string; file: string; replaced: boolean; warnings: string[] }
 export interface LegacyTest { item: { path: string; name: string; start: string; finish: string }; vars: [string, string][]; yaml: string; layers: Record<string, unknown>[]; problems: string[]; timing: string; preview: string | null; guideFound: boolean; error?: string }
 export interface Overlay { id: string; name: string; layers: OverlayLayer[]; timing: OverlayTiming; motion?: "live" | "rendered"; legacy?: LegacyElement; fadeSeconds?: number; opacity?: number; duringFiller?: boolean; fillerOnly?: boolean; withinContent?: boolean; anchor?: { location: OverlayLocation; hMargin: number; vMargin: number; widthPercent?: number }; season?: OverlaySeason; category?: string; description?: string; updatedAt?: string }
-export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }
+export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string; days?: number[]; months?: number[] }
 export interface OverlayMoment { file: string; itemId: string; itemStart: number; at: number; overlay: string; path: string; filler: boolean }
 export interface OverlayField { key: string; label: string; sample: string; slot?: number }
 /** Where an overlay asset (`assets/<file>`, or an absolute path on the server) shows in the browser. */
@@ -57,7 +57,7 @@ export interface OverlayPictures { dir: string; isDefault: boolean; files: Overl
 /** Fonts overlay text can use: every family the server draws with, and the font files added there. */
 export interface OverlayFonts { families: string[]; added: { file: string; families: string[] }[]; dir: string }
 
-export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; repeats?: boolean; ads?: number; }
+export interface ChannelSummary { name: string; file: string; mode?: string; valid: boolean; error?: string; meta?: ChannelMeta; contentDefs?: number; sequences?: number; pods?: number; dayparts?: number; blocks?: number; alternates?: number; repeats?: boolean; ads?: number; }
 export interface ShowIf { key: string; equals: string | string[]; }
 export type SchemaField =
   | { type: "text" | "textarea" | "query"; key: string; label: string; help?: string; placeholder?: string; default?: string; showIf?: ShowIf }
@@ -69,7 +69,9 @@ export type SchemaField =
   | { type: "channel"; key: string; label: string; help?: string; showIf?: ShowIf }
   | { type: "tags"; key: string; label: string; help?: string; libraries?: string; collection?: string; showIf?: ShowIf }
   | { type: "overlays"; key: string; label: string; help?: string; showIf?: ShowIf }
-  | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; fields: SchemaField[]; showIf?: ShowIf };
+  | { type: "picks"; key: string; label: string; help?: string; options: { value: number; label: string }[]; presets?: { label: string; values: number[] }[]; showIf?: ShowIf }
+  | { type: "list"; key: string; label: string; help?: string; addLabel?: string; itemTitle?: string; itemNoun?: string; collapsible?: boolean;
+      addCopy?: { label: string; from: string; to: string }; fields: SchemaField[]; showIf?: ShowIf };
 /** What a remote stream channel's playlist and guide resolve to ("Check stream"). */
 export interface RemoteProbe {
   error?: string;

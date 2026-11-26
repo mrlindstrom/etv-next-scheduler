@@ -409,19 +409,20 @@ export function planLegacyImport(legacyDbPath: string, opts: {
       if (ps.ShuffleScheduleItems) warnings.push("'shuffle schedule items' isn't supported — items play in order");
       if (ps.RandomStartPoint) warnings.push("'random start point' isn't supported — playback starts at the beginning of the order");
       if (ps.TreatCollectionsAsShows) warnings.push("'treat collections as shows' isn't supported");
-      if (has("ProgramScheduleAlternate") && one(`SELECT 1 FROM ProgramScheduleAlternate WHERE PlayoutId=?`, r.pid)) warnings.push("alternate schedules (by day/month) aren't imported — only the main schedule");
 
+      // one legacy schedule's items as blocks; `label` prefixes the warnings of an alternate's
+      const blocksOf = (psid: number, label: string): any[] | null => {
       const items = all(`SELECT i.*, o.Id isOne, f.Id isFlood, m.Id isMulti, m.Count mCount, m.MultipleMode mMode, d.Id isDur, d.PlayoutDuration dur, d.TailMode tailMode
           FROM ProgramScheduleItem i
           LEFT JOIN ProgramScheduleOneItem o ON o.Id=i.Id LEFT JOIN ProgramScheduleFloodItem f ON f.Id=i.Id
           LEFT JOIN ProgramScheduleMultipleItem m ON m.Id=i.Id LEFT JOIN ProgramScheduleDurationItem d ON d.Id=i.Id
-         WHERE i.ProgramScheduleId=? ORDER BY i."Index"`, r.psid);
-      if (!items.length) { warnings.push("its schedule has no items"); continue; }
+         WHERE i.ProgramScheduleId=? ORDER BY i."Index"`, psid);
+      if (!items.length) { warnings.push(label ? `${label}: its schedule has no items` : "its schedule has no items"); return null; }
       const loopSingle = items.length === 1 && (items[0].isOne || items[0].isFlood);
 
       const blocks: any[] = [];
       items.forEach((it: any, n: number) => {
-        const where = `item ${n + 1}`;
+        const where = `${label ? `${label} ` : ""}item ${n + 1}`;
         const c = content(it.CollectionType, it, warnings, where);
         if (!c) return;
         const ord = PLAYBACK_ORDER[it.PlaybackOrder] ?? { order: "shuffle", warn: `play order ${it.PlaybackOrder} imported as shuffle` };
@@ -480,11 +481,42 @@ export function planLegacyImport(legacyDbPath: string, opts: {
         if (fbPreset) { const ref = fillerRef(fbPreset, warnings, fbPreset === tail ? "tail" : "fallback"); if (ref) b.fallbackCollection = ref; }
         blocks.push(b);
       });
+      return blocks;
+      };
+      const blocks = blocksOf(r.psid, "");
+      if (!blocks) continue;
       if (!blocks.length) { warnings.push("nothing in its schedule could be imported"); continue; }
+
+      // alternate schedules (legacy picks the first, by index, whose days, days of the month,
+      // months and date range all match; an empty list never matches)
+      const alternates: any[] = [];
+      if (has("ProgramScheduleAlternate")) {
+        const cols = new Set(all(`PRAGMA table_info(ProgramScheduleAlternate)`).map((c: any) => c.name));
+        const DOW = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+        const list = (v: unknown, names?: string[]): number[] => [...new Set((String(v ?? "").match(/[A-Za-z]+|\d+/g) ?? [])
+          .map((t) => (/^\d+$/.test(t) ? Number(t) : names ? names.indexOf(t.toLowerCase()) : -1)).filter((n) => n >= 0))];
+        const any = (xs: number[], size: number) => xs.length >= size ? undefined : xs; // every one ticked = any
+        const md = (m: unknown, d: unknown, y: unknown) => `${y ? `${y}-` : ""}${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+        for (const a of all(`SELECT a.*, s.Name sname FROM ProgramScheduleAlternate a LEFT JOIN ProgramSchedule s ON s.Id=a.ProgramScheduleId WHERE a.PlayoutId=? ORDER BY a."Index"`, r.pid)) {
+          const label = `alternate "${a.sname ?? a.ProgramScheduleId}"`;
+          const days = list(a.DaysOfWeek, DOW).filter((d) => d <= 6), dom = list(a.DaysOfMonth).filter((d) => d >= 1 && d <= 31), months = list(a.MonthsOfYear).filter((m) => m >= 1 && m <= 12);
+          if (!days.length || !dom.length || !months.length) { warnings.push(`${label}: no days or months ticked, so it never played — skipped`); continue; }
+          const ranged = cols.has("LimitToDateRange") && !!a.LimitToDateRange;
+          const alt: any = { name: a.sname ?? `Alternate ${alternates.length + 1}`, days: any(days, 7), daysOfMonth: any(dom, 31), months: any(months, 12) };
+          if (ranged) Object.assign(alt, { dateRange: true, from: md(a.StartMonth, a.StartDay, a.EndYear != null ? a.StartYear : null), to: md(a.EndMonth, a.EndDay, a.StartYear != null ? a.EndYear : null) });
+          // the main schedule on every day: what plays anyway
+          if (a.ProgramScheduleId === r.psid && !ranged && !alt.days && !alt.daysOfMonth && !alt.months) continue;
+          const ab = blocksOf(a.ProgramScheduleId, label);
+          if (!ab?.length) { warnings.push(`${label}: nothing in its schedule could be imported — skipped`); continue; }
+          alt.blocks = ab;
+          for (const k of ["days", "daysOfMonth", "months"]) if (alt[k] === undefined) delete alt[k];
+          alternates.push(alt);
+        }
+      }
 
       plan.file = `${name}.schedule.json`;
       setStatus(plan);
-      plan.config = JSON.stringify({ imported: { from: "ErsatzTV legacy", channel: `${r.num} ${r.name}`, schedule: ps.Name, warnings }, blocks }, null, 2);
+      plan.config = JSON.stringify({ imported: { from: "ErsatzTV legacy", channel: `${r.num} ${r.name}`, schedule: ps.Name, warnings }, blocks, ...(alternates.length ? { alternates } : {}) }, null, 2);
     }
 
     // channel numbers: clashes with your existing channels (a suggestion is

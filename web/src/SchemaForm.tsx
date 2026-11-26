@@ -24,7 +24,8 @@ export function SchemaForm({ fields, value, onChange }: { fields: SchemaField[];
 }
 
 function FieldView({ f, value, group, onChange }: { f: SchemaField; value: any; group?: any; onChange: (v: any) => void }) {
-  if (f.type === "list") return <ListField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
+  if (f.type === "list") return <ListField f={f} value={Array.isArray(value) ? value : []} group={group} onChange={onChange} />;
+  if (f.type === "picks") return <PicksField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
   if (f.type === "tags") return <TagsField f={f} value={Array.isArray(value) ? value : []} group={group} onChange={onChange} />;
   if (f.type === "libraries") return <LibrariesField f={f} value={Array.isArray(value) ? value : []} onChange={onChange} />;
   if (f.type === "collection") return <CollectionField f={f} value={value} onChange={onChange} />;
@@ -276,27 +277,57 @@ function defaults(fields: SchemaField[]): any {
   return o;
 }
 
-function ListField({ f, value, onChange }: { f: Extract<SchemaField, { type: "list" }>; value: any[]; onChange: (v: any[]) => void }) {
+// tick-boxes for a set of numbers; none ticked = any
+function PicksField({ f, value, onChange }: { f: Extract<SchemaField, { type: "picks" }>; value: number[]; onChange: (v: number[]) => void }) {
+  const sel = new Set(value.map(Number));
+  const order = new Map(f.options.map((o, i) => [o.value, i]));
+  const set = (s: Set<number>) => onChange([...s].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0)));
+  const toggle = (n: number) => { const s = new Set(sel); s.has(n) ? s.delete(n) : s.add(n); set(s); };
+  return (
+    <div className="lib-field">
+      <div>{f.label} <span className="muted" style={{ fontSize: 11 }}>{sel.size ? "" : "(any)"}</span>
+        {(f.presets ?? []).map((p) => <button key={p.label} type="button" style={{ marginLeft: 6, fontSize: 11, padding: "1px 8px" }} onClick={() => set(new Set(p.values))}>{p.label}</button>)}
+        {sel.size > 0 && <button type="button" style={{ marginLeft: 6, fontSize: 11, padding: "1px 8px" }} onClick={() => onChange([])}>Any</button>}
+      </div>
+      {f.help && <p className="muted" style={{ fontSize: 11, margin: "2px 0 4px" }}>{f.help}</p>}
+      <div className="lib-checks" style={{ display: "flex", flexWrap: "wrap", gap: "2px 14px", maxHeight: "none" }}>
+        {f.options.map((o) => <label key={o.value} className="switch" style={{ minWidth: f.options.length > 12 ? 44 : 58 }}><input type="checkbox" checked={sel.has(o.value)} onChange={() => toggle(o.value)} /> {o.label}</label>)}
+      </div>
+    </div>
+  );
+}
+
+function ListField({ f, value, group, onChange }: { f: Extract<SchemaField, { type: "list" }>; value: any[]; group?: any; onChange: (v: any[]) => void }) {
+  const [folded, setFolded] = useState<Set<number>>(new Set());
   const update = (i: number, item: any) => onChange(value.map((v, j) => (j === i ? item : v)));
-  const remove = (i: number) => onChange(value.filter((_, j) => j !== i));
+  const remove = (i: number) => { onChange(value.filter((_, j) => j !== i)); setFolded(new Set()); };
   const add = () => onChange([...value, defaults(f.fields)]);
-  const move = (i: number, d: number) => { const j = i + d; if (j < 0 || j >= value.length) return; const a = [...value]; [a[i], a[j]] = [a[j], a[i]]; onChange(a); };
+  const copyFrom = f.addCopy && Array.isArray(group?.[f.addCopy.from]) ? group[f.addCopy.from] : null;
+  const addCopy = () => f.addCopy && onChange([...value, { ...defaults(f.fields), [f.addCopy.to]: JSON.parse(JSON.stringify(copyFrom ?? [])) }]);
+  const move = (i: number, d: number) => { const j = i + d; if (j < 0 || j >= value.length) return; const a = [...value]; [a[i], a[j]] = [a[j], a[i]]; onChange(a); setFolded(new Set()); };
+  const fold = (i: number) => setFolded((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
   return (
     <div className="list-field">
-      <div className="pane-head" style={{ margin: "4px 0" }}><b>{f.label}</b><button type="button" onClick={add}>{f.addLabel ?? "+ Add"}</button></div>
+      <div className="pane-head" style={{ margin: "4px 0" }}><b>{f.label}</b>
+        <span>
+          {f.addCopy && copyFrom?.length ? <button type="button" onClick={addCopy} style={{ marginRight: 6 }}>{f.addCopy.label}</button> : null}
+          <button type="button" onClick={add}>{f.addLabel ?? "+ Add"}</button>
+        </span>
+      </div>
       {f.help && <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>{f.help}</p>}
       {value.length === 0 && <p className="muted">None yet — click {f.addLabel ?? "Add"}.</p>}
       {value.map((item, i) => (
         <div key={i} className="meta-card" style={{ marginBottom: 10 }}>
           <div className="pane-head" style={{ margin: 0 }}>
-            <b>{i + 1}. {f.itemTitle && item[f.itemTitle] ? String(item[f.itemTitle]).slice(0, 60) : "block"}</b>
+            <b>{i + 1}. {f.itemTitle && item[f.itemTitle] ? String(item[f.itemTitle]).slice(0, 60) : f.itemNoun ?? "block"}</b>
             <span>
+              {f.collapsible && <button type="button" onClick={() => fold(i)} style={{ marginRight: 4 }}>{folded.has(i) ? "Show" : "Hide"}</button>}
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0}>↑</button>
               <button type="button" onClick={() => move(i, 1)} disabled={i === value.length - 1} style={{ marginLeft: 4 }}>↓</button>
               <button type="button" className="danger" onClick={() => remove(i)} style={{ marginLeft: 6 }}>Remove</button>
             </span>
           </div>
-          <SchemaForm fields={f.fields} value={item} onChange={(v) => update(i, v)} />
+          {!folded.has(i) && <SchemaForm fields={f.fields} value={item} onChange={(v) => update(i, v)} />}
         </div>
       ))}
     </div>

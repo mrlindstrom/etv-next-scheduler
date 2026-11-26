@@ -234,7 +234,7 @@ export function Channels({ onNavigate }: { onNavigate?: (tab: string) => void } 
     if (!s?.valid) return <span className="err">{s?.error ?? "invalid"}</span>;
     if (s.line) return <span className="ok">valid · {s.line}</span>;
     if (mode === "grid") return <span className="ok">valid · {s.programs} show{s.programs === 1 ? "" : "s"} · {s.cells} slot{s.cells === 1 ? "" : "s"}{s.seasons > 1 ? ` · ${s.seasons} lineups` : ""}{s.events ? ` · ${s.events} event${s.events === 1 ? "" : "s"}` : ""}</span>;
-    if (mode === "schedule" || s.blocks != null && s.contentDefs == null) return <span className="ok">valid · {s.blocks} block{s.blocks === 1 ? "" : "s"}{s.ads ? ` · ${s.ads} with ads` : ""}</span>;
+    if (mode === "schedule" || s.blocks != null && s.contentDefs == null) return <span className="ok">valid · {s.blocks} block{s.blocks === 1 ? "" : "s"}{s.alternates ? ` · ${s.alternates} alternate${s.alternates === 1 ? "" : "s"}` : ""}{s.ads ? ` · ${s.ads} with ads` : ""}</span>;
     return <span className="ok">valid · {s.dayparts ? `${s.dayparts} dayparts` : `${s.blocks} blocks`} · {s.sequences} sequences{s.pods ? ` · ${s.pods} pods` : ""}</span>;
   };
   const selMode = list.find((c) => c.name === sel)?.mode;

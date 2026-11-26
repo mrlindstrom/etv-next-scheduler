@@ -25,7 +25,7 @@ import { songTitle } from "./model.js";
 export { songTitle };
 import type { GuideEntry, ItemLabel } from "./engine.js";
 import { formatClock } from "./upnext-ass.js";
-import { localParts, type Tz } from "./time.js";
+import { localParts, localWeekday, type Tz } from "./time.js";
 import { layerState, layerStateAt, hasLayerTiming, fadeAt, stateBox, animLengths, isAnimated, drawsLive, liveFadeMs, layerWindow, FULL, type LayerAnim, type LayerAppear, type LayerState } from "./overlay-anim.js";
 import { holidayDate } from "./holidays.js";
 import { legacyLayers, legacyRef, type LegacyElement, type LegacyItemData } from "./legacy-graphics.js";
@@ -94,7 +94,9 @@ export interface Overlay {
   category?: string;
   description?: string;
 }
-export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string }
+/** When an overlay shows: a holiday window or a date range (every year), and/or only on
+ *  some days of the week (0 = Sunday) or months (1..12). Each part that's set must match. */
+export interface OverlaySeason { holiday?: string; before?: number; after?: number; from?: string; to?: string; days?: number[]; months?: number[] }
 
 export interface OverlayBuildOptions {
   library: Overlay[];
@@ -652,10 +654,13 @@ async function downscaled(file: string, maxW: number, cacheDir: string): Promise
 
 // ---- seasons -------------------------------------------------------------------
 const mdNum = (m: number, d: number) => m * 100 + d;
-/** Is `ms` (local date) inside the overlay's holiday window / date range? */
+/** Is `ms` (local date) on the overlay's days / months and inside its holiday window / date range? */
 export function inSeason(se: OverlaySeason | undefined, ms: number, tz: Tz): boolean {
-  if (!se || (!se.holiday && !(se.from && se.to))) return true;
+  if (!se) return true;
   const p = localParts(ms, tz);
+  if (se.days?.length && !se.days.includes(localWeekday(ms, tz))) return false;
+  if (se.months?.length && !se.months.includes(p.mo + 1)) return false;
+  if (!se.holiday && !(se.from && se.to)) return true;
   const day = Date.UTC(p.y, p.mo, p.da);
   if (se.holiday) {
     for (const y of [p.y - 1, p.y, p.y + 1]) {

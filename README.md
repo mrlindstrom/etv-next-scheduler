@@ -19,7 +19,8 @@ from your media library, along with the TV guide, and runs next for you.
   Share them with others: **Export…** saves overlays as one `.overlays.zip`
   with the images, videos, pictures and fonts they use, and **Import overlays…**
   brings one in and puts each file where it belongs.
-- **Ways to schedule a channel**: a block schedule, a weekly grid, commercial-break
+- **Ways to schedule a channel**: a block schedule (with legacy-style alternate
+  schedules for certain days, months or dates), a weekly grid, commercial-break
   pods, movie channels, legacy-style YAML, a time-shifted copy of another channel,
   or a relay of a live IPTV stream.
 - **The TV feel**: mid-roll breaks at chapter marks, padding to the half hour,

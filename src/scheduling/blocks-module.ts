@@ -4,7 +4,7 @@
 // with optional per-block mid-roll ad breaks and optional clock alignment (pad the
 // block's end to the next :00/:30/etc. barrier with filler). Blocks loop to fill
 // the day and compile to the same PlayoutDoc the YAML module produces.
-import type { ContentDef, Instruction, PlayoutDoc, PodDef, PlaybackOrder } from "../yaml.js";
+import type { ContentDef, DateRange, Daypart, Instruction, PlayoutDoc, PodDef, PlaybackOrder, Sequence } from "../yaml.js";
 import type { Field, SchedulingModule, ModuleSummary } from "./module.js";
 import { parseCollectionRef } from "../collection-ref.js";
 import { stationIdContent, STATION_FIELDS, type StationOptions } from "./station.js";
@@ -48,7 +48,20 @@ interface Block {
   overlays?: string[];             // overlays (library ids) shown during this block, on top of the channel's own
   inGuide?: boolean;               // false = plays like filler, with no guide entry of its own (legacy guide mode "filler")
 }
-interface ScheduleConfig extends StationOptions { blocks: Block[]; }
+/** Another block list for certain days (legacy's alternate schedules). Every filter that's
+ *  set must match the day; the first alternate that matches wins, and days none match
+ *  play the main blocks. */
+interface Alternate {
+  name?: string;
+  blocks: Block[];
+  days?: number[];          // 0 = Sunday .. 6 = Saturday; none = any day
+  daysOfMonth?: number[];   // 1..31; none = any
+  months?: number[];        // 1..12; none = any
+  dateRange?: boolean;      // also limit it to from..to
+  from?: string;            // "MM-DD" (every year) or "YYYY-MM-DD"
+  to?: string;
+}
+interface ScheduleConfig extends StationOptions { blocks: Block[]; alternates?: Alternate[]; }
 
 const ORDERS = ["shuffle", "chronological", "random", "season_episode", "shuffle_in_order", "multi_episode_shuffle"];
 const quote = (n: string) => `"${String(n).replace(/"/g, "")}"`;
@@ -63,31 +76,88 @@ function contentDef(key: string, source: string, value: string, order: PlaybackO
   return { key, kind: "search", order, query: value, raw: {} };
 }
 
+/** A date in a range: "MM-DD" (every year) or "YYYY-MM-DD". */
+function dateSpec(v: string | undefined): { year?: number; month: number; day: number } | null {
+  const m = /^\s*(?:(\d{4})-)?(\d{1,2})-(\d{1,2})\s*$/.exec(v ?? "");
+  if (!m) return null;
+  const month = Number(m[2]), day = Number(m[3]);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return { ...(m[1] ? { year: Number(m[1]) } : {}), month, day };
+}
+/** An alternate's date range; years count only when both ends have one (as in legacy). */
+function altRange(a: Alternate): DateRange | null {
+  const f = dateSpec(a.from), t = dateSpec(a.to);
+  if (!f || !t) return null;
+  if (f.year == null || t.year == null) return { from: { month: f.month, day: f.day }, to: { month: t.month, day: t.day } };
+  return { from: f, to: t };
+}
+const nums = (v: unknown, lo: number, hi: number): number[] =>
+  Array.isArray(v) ? [...new Set(v.map(Number).filter((n) => Number.isInteger(n) && n >= lo && n <= hi))].sort((a, b) => a - b) : [];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+/** The alternates that can play: with content, and a valid range when limited to one. */
+function liveAlternates(cfg: ScheduleConfig): Alternate[] {
+  return (cfg.alternates ?? []).filter((a) => (a.blocks ?? []).some((b) => b.content) && (!a.dateRange || altRange(a)));
+}
+
 export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
   const content: ContentDef[] = [];
   const pods: Record<string, PodDef> = {};
-  const playout: Instruction[] = [];
+  const alts = liveAlternates(cfg);
+  const main = compileList(cfg.blocks ?? [], "", content, pods);
+  let doc: PlayoutDoc;
+  if (!alts.length) doc = { content, sequences: {}, pods, dayparts: [], reset: [], playout: [...main, { op: "repeat" }] };
+  else {
+    // each list is a sequence; the day picks one (first match), the main list is the catch-all
+    const sequences: Record<string, Sequence> = { main: { key: "main", items: main, whole: true } };
+    const dayparts: Daypart[] = [];
+    alts.forEach((a, n) => {
+      const key = `alt${n + 1}`;
+      sequences[key] = { key, items: compileList(a.blocks, `a${n + 1}`, content, pods), whole: true };
+      const days = nums(a.days, 0, 6), dom = nums(a.daysOfMonth, 1, 31), months = nums(a.months, 1, 12);
+      const range = a.dateRange ? altRange(a) : null;
+      dayparts.push({ label: a.name?.trim() || `Alternate ${n + 1}`, days: days.length ? days : ALL_DAYS, fromMin: 0, toMin: 1440, sequence: key,
+        ...(months.length ? { months } : {}), ...(dom.length ? { daysOfMonth: dom } : {}), ...(range ? { ranges: [range] } : {}) });
+    });
+    dayparts.push({ label: "Main schedule", days: ALL_DAYS, fromMin: 0, toMin: 1440, sequence: "main" });
+    doc = { content, sequences, pods, dayparts, reset: [], playout: [] };
+  }
+  // era-matched commercials: every filler pool (breaks + padding) follows the airing show's year
+  if (cfg.matchEra) for (const c of content) if (/_(fill|mid|pad)$/.test(c.key)) c.matchEra = true;
+  const sid = stationIdContent(cfg);
+  if (sid) { content.push(sid); doc.stationId = sid.key; }
+  return doc;
+}
 
-  (cfg.blocks ?? []).forEach((b, i) => {
+/** One block list's instructions (`p` prefixes its content keys: "" for the main list,
+ *  "a1", "a2"… for alternates). A show an alternate plays the same way as an earlier list
+ *  (same content and order) shares that list's place in it. */
+function compileList(blocks: Block[], p: string, content: ContentDef[], pods: Record<string, PodDef>): Instruction[] {
+  const playout: Instruction[] = [];
+  const same = (a: ContentDef, b: ContentDef) => a.kind === b.kind && a.order === b.order && a.query === b.query && a.collection === b.collection && a.playlist === b.playlist;
+
+  blocks.forEach((b, i) => {
     if (!b.content) return;
-    const key = `b${i}`;
-    content.push(contentDef(key, b.source, b.content, b.order || "shuffle"));
+    const own = contentDef(`${p}b${i}`, b.source, b.content, b.order || "shuffle");
+    const shared = p ? content.find((c) => /^(a\d+)?b\d+$/.test(c.key) && same(c, own)) : undefined;
+    const key = shared?.key ?? own.key;
+    if (!shared) content.push(own);
 
     // shared filler pool (local libraries) for both mid-roll breaks and padding
     const fillerLibs = (b.fillerLibraries ?? b.adLibraries ?? []).filter(Boolean);
     const hasFiller = fillerLibs.length > 0;
-    const fillerKey = `b${i}_fill`;
+    const fillerKey = `${p}b${i}_fill`;
     if (hasFiller) content.push(contentDef(fillerKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"));
     // a collection-sourced filler role, else the shared library pool (if any)
     const roleKey = (role: string, ref: string | undefined): string | null => {
-      if (ref) { const k = `b${i}_${role}`; content.push(contentDef(k, "collection", ref, "shuffle")); return k; }
+      if (ref) { const k = `${p}b${i}_${role}`; content.push(contentDef(k, "collection", ref, "shuffle")); return k; }
       return hasFiller ? fillerKey : null;
     };
     // mid-roll limited to filler with certain tags: its own pool, so padding keeps everything
     const adTags = (b.adTags ?? []).filter(Boolean);
     let adKey = b.ads ? roleKey("mid", b.adCollection) : null;
     if (adKey && adTags.length) {
-      if (adKey === fillerKey) { adKey = `b${i}_mid`; content.push({ ...contentDef(adKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"), tags: adTags }); }
+      if (adKey === fillerKey) { adKey = `${p}b${i}_mid`; content.push({ ...contentDef(adKey, "search", `library_name:(${fillLibsQuery(fillerLibs)})`, "shuffle"), tags: adTags }); }
       else { const d = content.find((c) => c.key === adKey); if (d) d.tags = adTags; }
     }
     // end-of-block filler (after a "Play N minutes" block's items, and the padding to
@@ -100,14 +170,14 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
       const libs = (b.tailLibraries ?? []).filter(Boolean);
       const tailTags = (b.tailTags ?? []).filter(Boolean);
       const useLibs = libs.length ? libs : fillerLibs;
-      padKey = useLibs.length ? `b${i}_pad` : null;
+      padKey = useLibs.length ? `${p}b${i}_pad` : null;
       if (padKey) content.push({ ...contentDef(padKey, "search", `library_name:(${fillLibsQuery(useLibs)})`, "shuffle"), ...(tailTags.length ? { tags: tailTags } : {}) });
     } else padKey = roleKey("pad", b.padCollection);
     const fallbackKey = b.fallbackCollection ? roleKey("fallback", b.fallbackCollection) ?? undefined : undefined;
 
     // per-block mid-roll ad breaks: N items per break, or filled to a target length
     if (adKey) {
-      const podKey = `b${i}_pod`;
+      const podKey = `${p}b${i}_pod`;
       pods[podKey] = b.adCount
         ? { key: podKey, slots: [{ content: adKey, count: Math.max(1, b.adCount), fillerKind: "midroll" }] }
         : { key: podKey, target: `${b.adTarget ?? 2} minutes`, slots: [{ content: adKey, fill: true, fillerKind: "midroll" }] };
@@ -116,7 +186,7 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
       playout.push({ op: "mid_roll", enabled: false });
     }
     if (b.preRoll) {
-      const preKey = `b${i}_pre`;
+      const preKey = `${p}b${i}_pre`;
       content.push(contentDef(preKey, "collection", b.preRoll, "shuffle"));
       playout.push({ op: "pre_roll_on", content: preKey, count: Math.max(1, b.preRollCount ?? 1) });
     }
@@ -161,19 +231,10 @@ export function compileBlocks(cfg: ScheduleConfig): PlayoutDoc {
     for (const o of overlays) playout.push({ op: "graphics_off", element: o });
   });
 
-  playout.push({ op: "repeat" });
-  // era-matched commercials: every filler pool (breaks + padding) follows the airing show's year
-  if (cfg.matchEra) for (const c of content) if (/_(fill|mid|pad)$/.test(c.key)) c.matchEra = true;
-  const sid = stationIdContent(cfg);
-  if (sid) content.push(sid);
-  return { content, sequences: {}, pods, dayparts: [], reset: [], playout, stationId: sid ? sid.key : undefined };
+  return playout;
 }
 
-const SCHEMA: Field[] = [
-  {
-    type: "list", key: "blocks", label: "Blocks", addLabel: "+ Add block", itemTitle: "content",
-    help: "Blocks play top-to-bottom and the whole list loops to fill the day.",
-    fields: [
+const BLOCK_FIELDS: Field[] = [
       { type: "select", key: "source", label: "Content from", options: [{ value: "search", label: "Search query" }, { value: "collection", label: "Collection" }], default: "search" },
       { type: "query", key: "content", label: "Search query", placeholder: 'type:episode AND show_title:"Rugrats"', help: "A search query — test it on the Browse tab.", showIf: { key: "source", equals: "search" } },
       { type: "collection", key: "content", label: "Collection", help: "Pick a collection; the tag shows its type (manual / smart / multi / playlist).", showIf: { key: "source", equals: "collection" } },
@@ -229,6 +290,30 @@ const SCHEMA: Field[] = [
       { type: "collection", key: "fallbackCollection", label: "Fallback filler collection (optional)", help: "Covers any gap the padding can't fill exactly; its last item is trimmed." },
       { type: "checkbox", key: "inGuide", label: "Show this block in the guide", default: true, help: "Off = it plays like filler (bumpers, interstitials) with no guide entry of its own." },
       { type: "overlays", key: "overlays", label: "Overlays during this block", help: "Graphics shown over this block's programmes (lower thirds, a special bug…), on top of the channel's own overlays. Make them on the Overlays page." },
+];
+
+const WEEKDAYS = [1, 2, 3, 4, 5], WEEKENDS = [0, 6];
+const SCHEMA: Field[] = [
+  {
+    type: "list", key: "blocks", label: "Blocks", addLabel: "+ Add block", itemTitle: "content",
+    help: "Blocks play top-to-bottom and the whole list loops to fill the day. Days an alternate schedule below doesn't cover play these.",
+    fields: BLOCK_FIELDS,
+  },
+  {
+    type: "list", key: "alternates", label: "Alternate schedules", addLabel: "+ Add empty alternate", itemTitle: "name", itemNoun: "alternate", collapsible: true,
+    addCopy: { label: "+ Add alternate from the blocks above", from: "blocks", to: "blocks" },
+    help: "Other block lists for certain days, like legacy's alternate schedules: weekends, summer, a holiday season. Each day plays the first alternate (top to bottom) whose filters all match it; days none match play the Blocks above. The switch happens at midnight, once the show on air has finished. A show an alternate plays the same way as the blocks above keeps its place in its episodes.",
+    fields: [
+      { type: "text", key: "name", label: "Name", placeholder: "Weekends" },
+      { type: "picks", key: "days", label: "Days of the week", presets: [{ label: "Weekdays", values: WEEKDAYS }, { label: "Weekends", values: WEEKENDS }],
+        options: [1, 2, 3, 4, 5, 6, 0].map((d) => ({ value: d, label: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] })) },
+      { type: "picks", key: "daysOfMonth", label: "Days of the month", options: Array.from({ length: 31 }, (_, i) => ({ value: i + 1, label: String(i + 1) })) },
+      { type: "picks", key: "months", label: "Months", options: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].map((m, i) => ({ value: i + 1, label: m })) },
+      { type: "checkbox", key: "dateRange", label: "Limit to a date range" },
+      { type: "text", key: "from", label: "From", placeholder: "12-01", showIf: { key: "dateRange", equals: true as any },
+        help: "Month-day (12-01) for every year, or a full date (2026-12-01) for one year only. A range can wrap the new year (12-20 to 01-05)." },
+      { type: "text", key: "to", label: "To (inclusive)", placeholder: "12-31", showIf: { key: "dateRange", equals: true as any } },
+      { type: "list", key: "blocks", label: "Blocks", addLabel: "+ Add block", itemTitle: "content", collapsible: true, fields: BLOCK_FIELDS },
     ],
   },
   ...STATION_FIELDS,
@@ -249,7 +334,10 @@ export const blocksModule: SchedulingModule = {
       const cfg = JSON.parse(raw) as ScheduleConfig;
       const bs = (cfg.blocks ?? []).filter((b) => b.content);
       if (!bs.length) return { valid: false, error: "Add at least one block with content." };
-      return { valid: true, blocks: bs.length, ads: bs.filter((b) => b.ads && (b.fillerLibraries ?? b.adLibraries ?? []).length).length, aligned: bs.filter((b) => Number(b.align || 0) > 0).length };
+      const bad = (cfg.alternates ?? []).findIndex((a) => a.dateRange && !altRange(a));
+      if (bad >= 0) return { valid: false, error: `Alternate ${bad + 1}${cfg.alternates![bad].name ? ` (${cfg.alternates![bad].name})` : ""}: its date range needs a From and To like 12-01 or 2026-12-01.` };
+      const alts = liveAlternates(cfg).length;
+      return { valid: true, blocks: bs.length, ...(alts ? { alternates: alts } : {}), ads: bs.filter((b) => b.ads && (b.fillerLibraries ?? b.adLibraries ?? []).length).length, aligned: bs.filter((b) => Number(b.align || 0) > 0).length };
     } catch (e) { return { valid: false, error: (e as Error).message }; }
   },
 };

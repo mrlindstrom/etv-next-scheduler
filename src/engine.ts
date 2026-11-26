@@ -412,7 +412,7 @@ export class SchedulingEngine {
     const padIns = [...seq.items].reverse().find((i) => i.op === "pad_to_next") as
       Extract<Instruction, { op: "pad_to_next" }> | undefined;
     const prevSlot = this.slotEndMs;
-    if (padIns) this.slotEndMs = nextMinuteBoundary(this.nowMs, padIns.minutes, this.opts.tz);
+    if (padIns && !seq.whole) this.slotEndMs = nextMinuteBoundary(this.nowMs, padIns.minutes, this.opts.tz);
     try {
       for (const ins of seq.items) {
         // soft daypart edge: start nothing new, but still close out the program
@@ -947,10 +947,11 @@ function specMatches(s: DateSpec, y: number, mo: number, day: number): boolean {
 }
 
 /** Whether a daypart's date facets (if any) are satisfied by the given date.
- *  `months` is an independent filter; `dates`/`ranges`/`holidays` form an OR set
+ *  `months` and `daysOfMonth` are independent filters; `dates`/`ranges`/`holidays` form an OR set
  *  the date must satisfy when any of them is present. No facets => always true. */
 export function dateMatches(d: Daypart, y: number, mo: number, day: number): boolean {
   if (d.months && !d.months.includes(mo)) return false;
+  if (d.daysOfMonth?.length && !d.daysOfMonth.includes(day)) return false;
   const hasDateSet = !!(d.dates?.length || d.ranges?.length || d.holidays?.length);
   if (!hasDateSet) return true;
   if (d.dates?.some((s) => specMatches(s, y, mo, day))) return true;

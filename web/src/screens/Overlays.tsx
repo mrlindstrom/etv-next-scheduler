@@ -13,7 +13,7 @@
 //     on channels right here
 // Builds render each overlay per programme (see src/overlays.ts).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim, type OverlayFonts } from "../api.js";
+import { api, overlayAssetSrc, referenceFrameUrl, CHANNEL_LOGO, MATCH_PREFIX, type OverlayMedia, type SearchItem, type Overlay, type OverlayLayer, type OverlayField, type ChannelSummary, type LayerAnim, type OverlayFonts, type OverlaySeason } from "../api.js";
 import { PicturesCard, MatchImage, MatchProps } from "../OverlayPictures.js";
 import { LegacyImport, LegacyDesigner } from "../LegacyElements.js";
 import { SharePanel, ImportResult, downloadPack, readError } from "../OverlayShare.js";
@@ -89,6 +89,32 @@ function timingText(o: Overlay): string {
   if (t.mode === "end") return `${t.showSeconds ?? 10}s, ${t.offsetSeconds ?? 0}s before each show ends`;
   if (t.mode === "media") return t.media ? `Over “${t.media.title || t.media.path.split(/[\\/]/).pop()}”, whenever it airs` : "When a video plays (none picked yet)";
   return "Always on";
+}
+
+/** The season with some days / months set (none = any); undefined when nothing's left. */
+function seasonWith(se: OverlaySeason | undefined, patch: { days?: number[]; months?: number[] }): OverlaySeason | undefined {
+  const n: OverlaySeason = { ...(se ?? {}), ...patch };
+  if (!n.days?.length) delete n.days;
+  if (!n.months?.length) delete n.months;
+  return Object.keys(n).length ? n : undefined;
+}
+
+/** Tick-boxes for days of the week or months; none ticked = any. */
+function DayPicks({ label, all, names, value, presets, onChange }: { label: string; all: number[]; names: string[]; value?: number[]; presets?: [string, number[]][]; onChange: (v: number[]) => void }) {
+  const sel = new Set(value ?? []);
+  const set = (s: Set<number>) => onChange(all.filter((d) => s.has(d)));
+  const chip = { fontSize: 11, padding: "1px 8px", marginLeft: 6 };
+  return (
+    <div style={{ fontSize: 12 }}>
+      <span className="muted">{label}{sel.size ? "" : " (any)"}</span>
+      {(presets ?? []).map(([l, v]) => <button key={l} type="button" style={chip} onClick={() => set(new Set(v))}>{l}</button>)}
+      {sel.size > 0 && <button type="button" style={chip} onClick={() => onChange([])}>Any</button>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 10px", marginTop: 3 }}>
+        {all.map((d) => <label key={d} className="switch" style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+          <input type="checkbox" checked={sel.has(d)} onChange={() => { const s = new Set(sel); s.has(d) ? s.delete(d) : s.add(d); set(s); }} />{names[d]}</label>)}
+      </div>
+    </div>
+  );
 }
 
 /** A single-image overlay anchored like a legacy watermark -> a box on the artboard. */
@@ -738,9 +764,14 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                 <label>Opacity: {ov.opacity ?? 100}%<input type="range" min={10} max={100} value={ov.opacity ?? 100} onChange={(e) => setOpt({ opacity: Number(e.target.value) })} /></label>
               </div>
               <div className="ov-season">
-                <label>On which days
-                  <select value={ov.season?.holiday ? "holiday" : ov.season?.from ? "dates" : ""} onChange={(e) => setOpt({ season: e.target.value === "holiday" ? { holiday: "christmas", before: 7, after: 0 } : e.target.value === "dates" ? { from: "12-01", to: "12-31" } : undefined })}>
-                    <option value="">Every day</option><option value="holiday">Only around a holiday</option><option value="dates">Only between two dates (every year)</option>
+                <label>Which dates
+                  <select value={ov.season?.holiday ? "holiday" : ov.season?.from ? "dates" : ""} onChange={(e) => {
+                    // the days of the week and months stay as they are
+                    const keep = { ...(ov.season?.days?.length ? { days: ov.season.days } : {}), ...(ov.season?.months?.length ? { months: ov.season.months } : {}) };
+                    const w = e.target.value === "holiday" ? { holiday: "christmas", before: 7, after: 0 } : e.target.value === "dates" ? { from: "12-01", to: "12-31" } : {};
+                    setOpt({ season: Object.keys({ ...w, ...keep }).length ? { ...w, ...keep } : undefined });
+                  }}>
+                    <option value="">Any date</option><option value="holiday">Only around a holiday</option><option value="dates">Only between two dates (every year)</option>
                   </select>
                 </label>
                 {ov.season?.holiday && (
@@ -751,6 +782,10 @@ function Designer({ initial, fields, slots, channels, usedBy, onClose, onSaved, 
                 {ov.season?.from && (
                   <div className="ov-sentence">From <input style={{ width: 90 }} value={ov.season.from} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, from: e.target.value } })} /> to <input style={{ width: 90 }} value={ov.season.to ?? ""} placeholder="MM-DD" onChange={(e) => setOpt({ season: { ...ov.season, to: e.target.value } })} /> (month-day, e.g. 12-01).</div>
                 )}
+                <DayPicks label="Days of the week" all={[1, 2, 3, 4, 5, 6, 0]} names={["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]} value={ov.season?.days}
+                  presets={[["Weekdays", [1, 2, 3, 4, 5]], ["Weekends", [0, 6]]]} onChange={(days) => setOpt({ season: seasonWith(ov.season, { days }) })} />
+                <DayPicks label="Months" all={[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]} names={["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]} value={ov.season?.months}
+                  onChange={(months) => setOpt({ season: seasonWith(ov.season, { months }) })} />
               </div>
               {t.mode !== "media" && <label className="ov-inline">Show over{" "}
                 <select style={{ width: "auto", display: "inline-block" }} value={ov.fillerOnly ? "filler" : ov.duringFiller ? "both" : "shows"}

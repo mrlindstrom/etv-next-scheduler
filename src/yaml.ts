@@ -67,7 +67,9 @@ export type Instruction =
   | { op: "skip_items"; content: string; count: number }
   | { op: "skip_to_item"; content: string; season: number; episode: number };
 
-export interface Sequence { key: string; items: Instruction[]; }
+/** `whole`: a whole schedule (an alternate block list) rather than one block, so its last
+ *  pad_to_next isn't a slot deadline for everything in it; each block sets its own. */
+export interface Sequence { key: string; items: Instruction[]; whole?: boolean }
 
 // --- commercial-break pods ---------------------------------------------------
 export type MidRollMode = "chapters" | "interval" | "count";
@@ -108,6 +110,7 @@ export interface Daypart {
   toMin: number;    // minutes from local midnight, exclusive (1440 = end of day)
   sequence: string;
   months?: number[];      // 1..12; if set, current month must be one of these
+  daysOfMonth?: number[]; // 1..31; if set, the day of the month must be one of these
   dates?: DateSpec[];     // if set, current date must match one of these
   ranges?: DateRange[];   // if set, current date must fall inside one of these
   holidays?: string[];    // if set, current date must be one of these holidays
